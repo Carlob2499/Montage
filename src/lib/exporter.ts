@@ -25,8 +25,15 @@ export interface ExportedFile {
   blob: Blob;
 }
 
-/** Load full-resolution bitmaps + edit stacks for every photo a doc uses. */
-export async function loadResources(doc: ProjectDoc): Promise<RenderResources> {
+/**
+ * Load bitmaps + edit stacks for every photo a doc uses. Pass
+ * `useProxies` for fast screen-resolution rendering (swipe preview);
+ * exports always use originals.
+ */
+export async function loadResources(
+  doc: ProjectDoc,
+  useProxies = false,
+): Promise<RenderResources> {
   const photoIds = new Set<string>();
   const stickerIds = new Set<string>();
   for (const layer of doc.layers) {
@@ -37,10 +44,13 @@ export async function loadResources(doc: ProjectDoc): Promise<RenderResources> {
 
   const photos = new Map<string, { bitmap: ImageBitmap; stack?: import('../types').EditStack }>();
   for (const id of photoIds) {
-    const row = await db.originals.get(id);
-    if (!row) continue;
     const record = await db.photos.get(id);
-    if (record?.kind === 'video') continue; // video cells export as poster via proxy path later
+    // video cells render their poster frame (stored as the thumb)
+    const row =
+      record?.kind === 'video'
+        ? await db.thumbs.get(id)
+        : ((useProxies ? await db.proxies.get(id) : null) ?? (await db.originals.get(id)));
+    if (!row) continue;
     const bitmap = await decodeImage(row.blob);
     const edit = await db.edits.get(id);
     photos.set(id, { bitmap, stack: edit?.stack });

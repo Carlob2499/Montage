@@ -1,0 +1,241 @@
+import { useRef, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, uid } from '../../db/db';
+import { useProjectStore } from '../../state/projectStore';
+import { useUIStore } from '../../state/uiStore';
+import { downloadBlob, slug } from '../../lib/exporter';
+import type { PanelAspect, ProjectDoc, ProjectMode } from '../../types';
+
+export default function HomeScreen() {
+  const go = useUIStore((s) => s.go);
+  const toast = useUIStore((s) => s.toast);
+  const projects = useLiveQuery(() => db.projects.orderBy('updatedAt').reverse().toArray(), []);
+  const [showNew, setShowNew] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const openProject = (doc: ProjectDoc) => {
+    useProjectStore.getState().loadProject(doc);
+    go('editor');
+  };
+
+  const duplicate = async (doc: ProjectDoc) => {
+    const copy: ProjectDoc = {
+      ...structuredClone(doc),
+      id: uid(),
+      name: `${doc.name} copy`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await db.projects.put(copy);
+    toast('Project duplicated', 'success');
+  };
+
+  const remove = async (doc: ProjectDoc) => {
+    if (!confirm(`Delete project "${doc.name}"? Photos stay in your library.`)) return;
+    await db.projects.delete(doc.id);
+  };
+
+  const exportJson = (doc: ProjectDoc) => {
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+    downloadBlob(blob, `${slug(doc.name)}-project.json`);
+  };
+
+  const importJson = async (file: File) => {
+    try {
+      const doc = JSON.parse(await file.text()) as ProjectDoc;
+      if (!doc.id || !Array.isArray(doc.layers) || !doc.panelCount) {
+        throw new Error('Not a Montage project file');
+      }
+      doc.id = uid(); // avoid clobbering an existing project
+      doc.updatedAt = Date.now();
+      await db.projects.put(doc);
+      toast(`Imported "${doc.name}"`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Import failed', 'error');
+    }
+  };
+
+  return (
+    <div className="mx-auto flex h-full max-w-3xl flex-col px-4 pt-[max(env(safe-area-inset-top),1rem)]">
+      <header className="flex items-center justify-between py-4">
+        <div>
+          <h1 className="font-['Space_Grotesk'] text-2xl font-bold tracking-tight">
+            Montage <span className="text-accent-500">Studio</span>
+          </h1>
+          <p className="text-sm text-ink-400">Seamless carousels, on your device only.</p>
+        </div>
+        <button className="btn-soft" onClick={() => go('library')}>
+          Photo Library
+        </button>
+      </header>
+
+      <div className="flex gap-2 pb-4">
+        <button className="btn-primary flex-1" onClick={() => setShowNew(true)}>
+          + New project
+        </button>
+        <button className="btn-soft" onClick={() => importRef.current?.click()}>
+          Import JSON
+        </button>
+        <input
+          ref={importRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importJson(f);
+            e.target.value = '';
+          }}
+        />
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-8">
+        {projects?.length === 0 && (
+          <div className="surface rounded-2xl p-8 text-center text-ink-400">
+            No projects yet. Start with a new project, then pull photos in from your library.
+          </div>
+        )}
+        {projects?.map((p) => (
+          <div key={p.id} className="surface flex items-center gap-3 rounded-2xl p-4">
+            <button className="min-w-0 flex-1 text-left" onClick={() => openProject(p)}>
+              <div className="truncate font-semibold">{p.name}</div>
+              <div className="text-xs text-ink-400">
+                {p.mode === 'grid'
+                  ? `Profile grid · 3×${p.panelCount}`
+                  : `Carousel · ${p.panelCount} × ${p.aspect}`}{' '}
+                · {new Date(p.updatedAt).toLocaleString()}
+              </div>
+            </button>
+            <button className="btn-ghost px-2" title="Export JSON backup" onClick={() => exportJson(p)}>
+              ⤓
+            </button>
+            <button className="btn-ghost px-2" title="Duplicate" onClick={() => void duplicate(p)}>
+              ⧉
+            </button>
+            <button className="btn-ghost px-2 text-red-500" title="Delete" onClick={() => void remove(p)}>
+              🗑
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {showNew && <NewProjectDialog onClose={() => setShowNew(false)} onCreate={openProject} />}
+    </div>
+  );
+}
+
+function NewProjectDialog({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (doc: ProjectDoc) => void;
+}) {
+  const [name, setName] = useState('');
+  const [mode, setMode] = useState<ProjectMode>('carousel');
+  const [aspect, setAspect] = useState<PanelAspect>('4:5');
+  const [panels, setPanels] = useState(4);
+
+  const create = () => {
+    const doc = useProjectStore
+      .getState()
+      .newProject(name.trim() || 'Untitled montage', mode, aspect, panels);
+    onCreate(doc);
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 z-30 bg-black/30" onClick={onClose} />
+      <div className="sheet z-40 md:inset-auto md:left-1/2 md:top-1/2 md:w-[420px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl md:border">
+        <div className="space-y-4 p-5">
+          <h3 className="text-lg font-semibold">New project</h3>
+          <input
+            className="input-base"
+            placeholder="Project name (e.g. Lisbon '26)"
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <ModeButton
+              active={mode === 'carousel'}
+              title="Carousel"
+              subtitle="Panels sliced from one wide canvas"
+              onClick={() => setMode('carousel')}
+            />
+            <ModeButton
+              active={mode === 'grid'}
+              title="Profile grid"
+              subtitle="3×N tiles for your profile page"
+              onClick={() => setMode('grid')}
+            />
+          </div>
+          {mode === 'carousel' && (
+            <div className="flex gap-2">
+              {(['4:5', '1:1', '9:16'] as PanelAspect[]).map((a) => (
+                <button
+                  key={a}
+                  className={`btn flex-1 border ${
+                    aspect === a
+                      ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
+                      : 'border-ink-200 dark:border-ink-700'
+                  }`}
+                  onClick={() => setAspect(a)}
+                >
+                  {a === '4:5' ? '4:5 Portrait' : a === '1:1' ? '1:1 Square' : '9:16 Story'}
+                </button>
+              ))}
+            </div>
+          )}
+          <label className="block text-sm">
+            <span className="mb-1 flex justify-between text-ink-500">
+              <span>{mode === 'grid' ? 'Rows' : 'Panels'}</span>
+              <b className="text-ink-900 dark:text-ink-100">{panels}</b>
+            </span>
+            <input
+              type="range"
+              min={1}
+              max={mode === 'grid' ? 8 : 20}
+              value={panels}
+              onChange={(e) => setPanels(Number(e.target.value))}
+            />
+          </label>
+          <div className="flex gap-2 pt-1">
+            <button className="btn-soft flex-1" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="btn-primary flex-1" onClick={create}>
+              Create
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ModeButton({
+  active,
+  title,
+  subtitle,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-xl border p-3 text-left transition-colors ${
+        active
+          ? 'border-accent-500 bg-accent-500/10'
+          : 'border-ink-200 dark:border-ink-700 hover:bg-ink-100 dark:hover:bg-ink-800'
+      }`}
+    >
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="text-xs text-ink-400">{subtitle}</div>
+    </button>
+  );
+}
