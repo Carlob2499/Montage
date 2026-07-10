@@ -45,7 +45,7 @@ export default function LibraryScreen() {
     setAlbum(id);
   };
 
-  const onFiles = async (files: FileList | File[]) => {
+  const onFiles = async (files: File[]) => {
     let albumId = activeAlbumId;
     if (!albumId) {
       const id = uid();
@@ -55,7 +55,7 @@ export default function LibraryScreen() {
     }
     setBusy(true);
     try {
-      const result = await importFiles(Array.from(files), albumId);
+      const result = await importFiles(files, albumId);
       if (result.imported.length) toast(`Imported ${result.imported.length} file(s)`, 'success');
       for (const err of result.errors) toast(`${err.fileName}: ${err.message}`, 'error');
     } finally {
@@ -134,7 +134,8 @@ export default function LibraryScreen() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        if (e.dataTransfer.files.length) void onFiles(e.dataTransfer.files);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) void onFiles(files);
       }}
     >
       <header className="flex items-center gap-2 px-4 py-2">
@@ -285,8 +286,10 @@ export default function LibraryScreen() {
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"
               className="hidden"
               onChange={(e) => {
-                if (e.target.files?.length) void onFiles(e.target.files);
+                // materialize before clearing — FileList is live and empties on reset
+                const files = Array.from(e.target.files ?? []);
                 e.target.value = '';
+                if (files.length) void onFiles(files);
               }}
             />
           </div>

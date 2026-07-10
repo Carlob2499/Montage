@@ -14,8 +14,8 @@ export default function StickersSheet({ onClose }: { onClose: () => void }) {
   const toast = useUIStore((s) => s.toast);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const upload = async (files: FileList) => {
-    for (const file of Array.from(files)) {
+  const upload = async (files: File[]) => {
+    for (const file of files) {
       if (file.type !== 'image/png' && file.type !== 'image/webp') {
         toast(`${file.name}: stickers must be PNG (transparent) or WebP`, 'error');
         continue;
@@ -61,8 +61,10 @@ export default function StickersSheet({ onClose }: { onClose: () => void }) {
         accept="image/png,image/webp"
         className="hidden"
         onChange={(e) => {
-          if (e.target.files?.length) void upload(e.target.files);
+          // materialize before clearing — FileList is live and empties on reset
+          const files = Array.from(e.target.files ?? []);
           e.target.value = '';
+          if (files.length) void upload(files);
         }}
       />
       <div className="grid grid-cols-4 gap-2">
