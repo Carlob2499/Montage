@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke": "node scripts/smoke/run.mjs",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@types/react-dom": "^18.3.6",
     "@vitejs/plugin-react": "^4.5.0",
     "fake-indexeddb": "^6.0.1",
+    "playwright-core": "^1.53.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
