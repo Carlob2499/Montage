@@ -9,7 +9,7 @@ import { sortPhotos, searchPhotos } from '../../lib/photoSort';
 import { formatBytes } from '../../lib/imageUtils';
 import { useBlobUrl } from '../../hooks/useBlobUrl';
 import type { PhotoRecord, SortMode } from '../../types';
-import { addPhotoLayersToProject } from '../editor/canvasActions';
+import { addPhotoLayersToProject, applyAutoLayout } from '../editor/canvasActions';
 import PhotoEditSheet from '../editor/PhotoEditSheet';
 
 export default function LibraryScreen() {
@@ -29,6 +29,11 @@ export default function LibraryScreen() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const albums = useLiveQuery(() => db.albums.orderBy('createdAt').toArray(), []);
+  // most recent imports across all albums — shown while picking for the canvas
+  const recents = useLiveQuery(
+    () => (pickerTarget ? db.photos.orderBy('dateAdded').reverse().limit(12).toArray() : []),
+    [pickerTarget],
+  );
   const album = albums?.find((a) => a.id === activeAlbumId) ?? null;
   const photos = useLiveQuery(
     async () => (activeAlbumId ? db.photos.where('albumId').equals(activeAlbumId).toArray() : []),
@@ -89,6 +94,16 @@ export default function LibraryScreen() {
     addPhotoLayersToProject(picked, { kind: 'layer' });
     setSelecting(false);
     setSelected(new Set());
+    go('editor');
+  };
+
+  const autoLayoutSelected = () => {
+    const picked = shown.filter((p) => selected.has(p.id) && p.kind === 'image');
+    if (!picked.length) return;
+    applyAutoLayout(picked, 'dump');
+    setSelecting(false);
+    setSelected(new Set());
+    toast('Photo dump laid out — shuffle it from Layouts ✨', 'success');
     go('editor');
   };
 
@@ -158,6 +173,20 @@ export default function LibraryScreen() {
           {selecting ? 'Done' : 'Select'}
         </button>
       </header>
+
+      {/* recents strip while picking for the canvas */}
+      {pickerTarget && recents && recents.length > 0 && (
+        <div className="px-4 pb-1">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+            Recent imports
+          </div>
+          <div className="scrollbar-none flex gap-1.5 overflow-x-auto">
+            {recents.map((p) => (
+              <RecentThumb key={p.id} photo={p} onTap={() => photoTapped(p)} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* album strip */}
       <div className="scrollbar-none flex gap-2 overflow-x-auto px-4 pb-2">
@@ -260,9 +289,19 @@ export default function LibraryScreen() {
             <span className="text-sm font-medium">{selected.size} selected</span>
             <div className="flex-1" />
             {hasProject && (
-              <button className="btn-primary" disabled={!selected.size} onClick={addSelectedToCanvas}>
-                Add to canvas
-              </button>
+              <>
+                <button
+                  className="btn-primary"
+                  disabled={!selected.size}
+                  onClick={autoLayoutSelected}
+                  title="One-tap photo dump layout"
+                >
+                  ✨ Dump
+                </button>
+                <button className="btn-soft" disabled={!selected.size} onClick={addSelectedToCanvas}>
+                  Add
+                </button>
+              </>
             )}
             <button className="btn-soft" disabled={!selected.size} onClick={() => void batchTag()}>
               Tag
@@ -392,6 +431,18 @@ function PhotoThumb({
           ✓
         </span>
       )}
+    </button>
+  );
+}
+
+function RecentThumb({ photo, onTap }: { photo: PhotoRecord; onTap: () => void }) {
+  const url = useBlobUrl('thumbs', photo.id);
+  return (
+    <button
+      className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800"
+      onClick={onTap}
+    >
+      {url && <img src={url} alt={photo.fileName} className="h-full w-full object-cover" />}
     </button>
   );
 }

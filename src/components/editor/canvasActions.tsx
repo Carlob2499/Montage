@@ -3,9 +3,11 @@
 // templates, fill placeholders).
 // ---------------------------------------------------------------------------
 
-import { uid } from '../../db/db';
+import { db, uid } from '../../db/db';
 import { useProjectStore } from '../../state/projectStore';
 import { canvasSize } from '../../lib/slicer';
+import { autoLayout, suggestedPanelCount } from '../../lib/autoLayout';
+import type { AutoLayoutStyle } from '../../lib/autoLayout';
 import type { PhotoLayer, PhotoRecord, TemplateDef, TextLayer } from '../../types';
 
 type PickerTarget =
@@ -149,6 +151,96 @@ export function applyStructuredGrid(rows: number, cols: number, spacing: number)
     }
   }
   store.commit((d) => ({ ...d, layers: [...d.layers, ...layers] }));
+}
+
+/**
+ * One-tap "photo dump": lay a batch of photos out across the panels
+ * (seam-safe scatter or seamless panorama), growing the panel count to a
+ * comfortable density. Returns the layer ids it created.
+ */
+export function applyAutoLayout(
+  photos: PhotoRecord[],
+  style: AutoLayoutStyle,
+  seed = Date.now(),
+): string[] {
+  const store = useProjectStore.getState();
+  const doc = store.doc;
+  if (!doc || photos.length === 0) return [];
+  const panelCount =
+    doc.mode === 'grid'
+      ? doc.panelCount
+      : suggestedPanelCount(photos.length, doc.panelCount);
+  const dims = canvasSize({ ...doc, panelCount });
+  // grid mode: the 3-column canvas behaves like 3 vertical "panels"
+  const horizontalPanels = doc.mode === 'grid' ? 3 : panelCount;
+  const placed = autoLayout(
+    photos.map((p) => ({ id: p.id, width: p.width, height: p.height, dateTaken: p.dateTaken })),
+    dims.height,
+    horizontalPanels,
+    { style, seed, margin: doc.margin, gutter: doc.gutter },
+  );
+  const layers: PhotoLayer[] = placed.map((pl) => ({
+    id: uid(),
+    type: 'photo',
+    photoId: pl.photoId,
+    x: pl.x,
+    y: pl.y,
+    width: pl.width,
+    height: pl.height,
+    rotation: pl.rotation,
+    opacity: 1,
+    cornerRadius: 0,
+    imgScale: 1,
+    imgOffsetX: 0,
+    imgOffsetY: 0,
+  }));
+  store.commit((d) => ({
+    ...d,
+    panelCount,
+    captions:
+      d.mode === 'grid'
+        ? d.captions
+        : panelCount <= d.captions.length
+          ? d.captions
+          : [...d.captions, ...Array.from({ length: panelCount - d.captions.length }, () => '')],
+    layers: [...d.layers, ...layers],
+  }));
+  return layers.map((l) => l.id);
+}
+
+/**
+ * Re-shuffle: rebuild the layout of the photo layers already on the canvas
+ * with a fresh seed (keeps text/sticker/card layers untouched).
+ */
+export async function reshuffleLayout(style: AutoLayoutStyle): Promise<void> {
+  const store = useProjectStore.getState();
+  const doc = store.doc;
+  if (!doc) return;
+  const photoIds = doc.layers
+    .filter((l): l is PhotoLayer => l.type === 'photo' && !!l.photoId)
+    .map((l) => l.photoId);
+  if (photoIds.length === 0) return;
+  const photos = (await db.photos.bulkGet(photoIds)).filter(
+    (p): p is PhotoRecord => p !== undefined,
+  );
+  const dims = canvasSize(doc);
+  const horizontalPanels = doc.mode === 'grid' ? 3 : doc.panelCount;
+  const placed = autoLayout(
+    photos.map((p) => ({ id: p.id, width: p.width, height: p.height, dateTaken: p.dateTaken })),
+    dims.height,
+    horizontalPanels,
+    { style, seed: Date.now(), margin: doc.margin, gutter: doc.gutter },
+  );
+  const byPhoto = new Map(placed.map((pl) => [pl.photoId, pl]));
+  store.commit((d) => ({
+    ...d,
+    layers: d.layers.map((l) => {
+      if (l.type !== 'photo' || !l.photoId) return l;
+      const pl = byPhoto.get(l.photoId);
+      if (!pl) return l;
+      return { ...l, x: pl.x, y: pl.y, width: pl.width, height: pl.height, rotation: pl.rotation };
+    }),
+  }));
 }
 
 export function addTextLayer(): void {

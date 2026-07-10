@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import Sheet from '../../shared/Sheet';
 import { TEMPLATES } from '../../../templates/templates';
 import { validateTemplateLibrary, TEMPLATE_CATEGORIES } from '../../../lib/templateSchema';
-import { applyTemplate, applyStructuredGrid } from '../canvasActions';
+import { applyTemplate, applyStructuredGrid, reshuffleLayout } from '../canvasActions';
+import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
 import type { TemplateCategory, TemplateDef } from '../../../types';
 
@@ -21,8 +22,30 @@ export default function TemplatesSheet({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
+  const hasPhotos = useProjectStore(
+    (s) => s.doc?.layers.some((l) => l.type === 'photo' && l.photoId) ?? false,
+  );
+
   return (
     <Sheet title="Layouts & templates" onClose={onClose} tall>
+      {hasPhotos && (
+        <div className="mb-3">
+          <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-400">
+            One-tap re-layout (photos on canvas)
+          </h4>
+          <div className="flex gap-2">
+            <button className="btn-soft flex-1 text-xs" onClick={() => void reshuffleLayout('dump')}>
+              ✨ Shuffle dump
+            </button>
+            <button className="btn-soft flex-1 text-xs" onClick={() => void reshuffleLayout('clean')}>
+              ▦ Clean grid
+            </button>
+            <button className="btn-soft flex-1 text-xs" onClick={() => void reshuffleLayout('panorama')}>
+              ⿲ Panorama
+            </button>
+          </div>
+        </div>
+      )}
       <div className="scrollbar-none -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1">
         {(['all', ...TEMPLATE_CATEGORIES, 'grids'] as const).map((c) => (
           <button

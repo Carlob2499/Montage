@@ -93,6 +93,23 @@ export default function HomeScreen() {
             No projects yet. Start with a new project, then pull photos in from your library.
           </div>
         )}
+        {projects && projects.length > 0 && (
+          <button
+            className="w-full rounded-2xl bg-gradient-to-r from-accent-500 to-accent-600 p-4 text-left text-white shadow-lg transition-transform active:scale-[0.99]"
+            onClick={() => openProject(projects[0])}
+          >
+            <div className="text-xs font-medium uppercase tracking-wide text-white/70">
+              Continue where you left off
+            </div>
+            <div className="truncate text-lg font-bold">{projects[0].name}</div>
+            <div className="text-xs text-white/70">
+              {projects[0].mode === 'grid'
+                ? `Profile grid · 3×${projects[0].panelCount}`
+                : `Carousel · ${projects[0].panelCount} × ${projects[0].aspect}`}{' '}
+              · {new Date(projects[0].updatedAt).toLocaleString()}
+            </div>
+          </button>
+        )}
         {projects?.map((p) => (
           <div key={p.id} className="surface flex items-center gap-3 rounded-2xl p-4">
             <button className="min-w-0 flex-1 text-left" onClick={() => openProject(p)}>

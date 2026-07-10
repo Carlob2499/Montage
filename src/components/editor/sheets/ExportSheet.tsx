@@ -12,9 +12,10 @@ import {
   slug,
 } from '../../../lib/exporter';
 import type { ExportedFile, ExportOptions } from '../../../lib/exporter';
+import { canShareFiles, shareFiles, shareSupported, toShareFiles } from '../../../lib/share';
 
 type Target = 'panels' | 'grid' | 'panorama';
-type Delivery = 'files' | 'zip';
+type Delivery = 'share' | 'files' | 'zip';
 
 export default function ExportSheet({ onClose }: { onClose: () => void }) {
   const doc = useProjectStore((s) => s.doc);
@@ -23,9 +24,65 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<'image/jpeg' | 'image/png'>('image/jpeg');
   const [quality, setQuality] = useState(0.92);
   const [target, setTarget] = useState<Target>(doc?.mode === 'grid' ? 'grid' : 'panels');
-  const [delivery, setDelivery] = useState<Delivery>('zip');
+  const [delivery, setDelivery] = useState<Delivery>(() => (shareSupported() ? 'share' : 'zip'));
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // pre-rendered files awaiting the share tap (navigator.share must run
+  // synchronously inside a user gesture, so rendering happens on tap 1 and
+  // the share sheet opens on tap 2)
+  const [prepared, setPrepared] = useState<File[] | null>(null);
   if (!doc) return null;
+
+  const renderFiles = async (opts: ExportOptions): Promise<ExportedFile[]> => {
+    if (target === 'panorama') {
+      const pano = await exportPanorama(doc, opts);
+      if (pano.scale < 1) {
+        toast(
+          `Panorama downscaled to ${Math.round(pano.scale * 100)}% to stay inside mobile canvas limits`,
+        );
+      }
+      return [pano];
+    }
+    if (target === 'grid' || doc.mode === 'grid') return exportGridTiles(doc, opts);
+    return exportPanels(doc, opts);
+  };
+
+  const prepareShare = async () => {
+    await useProjectStore.getState().save();
+    const opts: ExportOptions = {
+      format,
+      quality,
+      onProgress: (done, total) => setProgress({ done, total }),
+    };
+    setProgress({ done: 0, total: 1 });
+    try {
+      const files = toShareFiles(await renderFiles(opts));
+      if (!canShareFiles(files)) {
+        toast('Sharing not supported for these files — use ZIP instead', 'error');
+        return;
+      }
+      setPrepared(files);
+      toast('Rendered — tap Share to open the share sheet', 'success');
+    } catch (err) {
+      console.error(err);
+      toast(err instanceof Error ? err.message : 'Render failed', 'error');
+    } finally {
+      setProgress(null);
+    }
+  };
+
+  const shareNow = () => {
+    if (!prepared) return;
+    // no awaits before share() — the user gesture must stay alive
+    void shareFiles(prepared, doc.name)
+      .then((shared) => {
+        if (shared) {
+          toast(`Shared ${prepared.length} file(s) ✓`, 'success');
+          setPrepared(null);
+          onClose();
+        }
+      })
+      .catch(() => toast('Share failed — try the ZIP delivery', 'error'));
+  };
 
   const run = async () => {
     await useProjectStore.getState().save();
@@ -36,20 +93,7 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
     };
     setProgress({ done: 0, total: 1 });
     try {
-      let files: ExportedFile[];
-      if (target === 'panorama') {
-        const pano = await exportPanorama(doc, opts);
-        if (pano.scale < 1) {
-          toast(
-            `Panorama downscaled to ${Math.round(pano.scale * 100)}% to stay inside mobile canvas limits`,
-          );
-        }
-        files = [pano];
-      } else if (target === 'grid' || doc.mode === 'grid') {
-        files = await exportGridTiles(doc, opts);
-      } else {
-        files = await exportPanels(doc, opts);
-      }
+      const files = await renderFiles(opts);
       if (delivery === 'zip' && target !== 'panorama') {
         const zip = await bundleZip(doc, files);
         downloadBlob(zip, `${slug(doc.name)}.zip`);
@@ -94,13 +138,19 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
                 active={target === 'panels'}
                 title={`Carousel panels (${doc.panelCount})`}
                 subtitle={`${sizeLabel} sRGB, numbered in swipe order`}
-                onClick={() => setTarget('panels')}
+                onClick={() => {
+                  setTarget('panels');
+                  setPrepared(null);
+                }}
               />
               <TargetRow
                 active={target === 'panorama'}
                 title="Full panorama"
                 subtitle="One wide image of the whole canvas"
-                onClick={() => setTarget('panorama')}
+                onClick={() => {
+                  setTarget('panorama');
+                  setPrepared(null);
+                }}
               />
             </>
           ) : (
@@ -118,41 +168,80 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           <div className="flex gap-2">
             <button
               className={`btn flex-1 border ${format === 'image/jpeg' ? 'border-accent-500 bg-accent-500/10' : 'border-ink-200 dark:border-ink-700'}`}
-              onClick={() => setFormat('image/jpeg')}
+              onClick={() => {
+                setFormat('image/jpeg');
+                setPrepared(null);
+              }}
             >
               JPEG
             </button>
             <button
               className={`btn flex-1 border ${format === 'image/png' ? 'border-accent-500 bg-accent-500/10' : 'border-ink-200 dark:border-ink-700'}`}
-              onClick={() => setFormat('image/png')}
+              onClick={() => {
+                setFormat('image/png');
+                setPrepared(null);
+              }}
             >
               PNG
             </button>
           </div>
           {format === 'image/jpeg' && (
-            <Slider label="JPEG quality" min={0.5} max={1} step={0.01} value={quality} onChange={setQuality} />
+            <Slider
+              label="JPEG quality"
+              min={0.5}
+              max={1}
+              step={0.01}
+              value={quality}
+              onChange={(v) => {
+                setQuality(v);
+                setPrepared(null);
+              }}
+            />
           )}
         </section>
 
-        {target !== 'panorama' && (
-          <section className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Delivery</h4>
-            <div className="flex gap-2">
+        <section className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Delivery</h4>
+          <div className="flex gap-2">
+            {shareSupported() && (
+              <button
+                className={`btn flex-1 border ${delivery === 'share' ? 'border-accent-500 bg-accent-500/10' : 'border-ink-200 dark:border-ink-700'}`}
+                onClick={() => {
+                  setDelivery('share');
+                  setPrepared(null);
+                }}
+              >
+                📤 Share sheet
+              </button>
+            )}
+            {target !== 'panorama' && (
               <button
                 className={`btn flex-1 border ${delivery === 'zip' ? 'border-accent-500 bg-accent-500/10' : 'border-ink-200 dark:border-ink-700'}`}
-                onClick={() => setDelivery('zip')}
+                onClick={() => {
+                  setDelivery('zip');
+                  setPrepared(null);
+                }}
               >
-                One ZIP (+captions.txt)
+                ZIP (+captions)
               </button>
-              <button
-                className={`btn flex-1 border ${delivery === 'files' ? 'border-accent-500 bg-accent-500/10' : 'border-ink-200 dark:border-ink-700'}`}
-                onClick={() => setDelivery('files')}
-              >
-                Separate files
-              </button>
-            </div>
-          </section>
-        )}
+            )}
+            <button
+              className={`btn flex-1 border ${delivery === 'files' ? 'border-accent-500 bg-accent-500/10' : 'border-ink-200 dark:border-ink-700'}`}
+              onClick={() => {
+                setDelivery('files');
+                setPrepared(null);
+              }}
+            >
+              Files
+            </button>
+          </div>
+          {delivery === 'share' && (
+            <p className="text-[11px] text-ink-400">
+              Renders first, then opens your device's share sheet — send panels straight to
+              Instagram or Photos.
+            </p>
+          )}
+        </section>
 
         {doc.mode === 'carousel' && (
           <button className="btn-soft w-full text-xs" onClick={() => openSheet('captions')}>
@@ -160,9 +249,21 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           </button>
         )}
 
-        <button className="btn-primary w-full" disabled={!!progress} onClick={() => void run()}>
-          {progress ? `Rendering ${progress.done}/${progress.total}…` : 'Export'}
-        </button>
+        {delivery === 'share' ? (
+          prepared ? (
+            <button className="btn-primary w-full" onClick={shareNow}>
+              📤 Share {prepared.length} file(s) now
+            </button>
+          ) : (
+            <button className="btn-primary w-full" disabled={!!progress} onClick={() => void prepareShare()}>
+              {progress ? `Rendering ${progress.done}/${progress.total}…` : 'Render for sharing'}
+            </button>
+          )
+        ) : (
+          <button className="btn-primary w-full" disabled={!!progress} onClick={() => void run()}>
+            {progress ? `Rendering ${progress.done}/${progress.total}…` : 'Export'}
+          </button>
+        )}
         {progress && (
           <div className="h-1.5 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-700">
             <div
