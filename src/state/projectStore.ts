@@ -1,0 +1,185 @@
+// ---------------------------------------------------------------------------
+// Editor document store with 50-step undo history and Dexie autosave.
+// ---------------------------------------------------------------------------
+
+import { create } from 'zustand';
+import { db, uid } from '../db/db';
+import type { Background, Layer, PanelAspect, ProjectDoc, ProjectMode } from '../types';
+
+const HISTORY_LIMIT = 50;
+
+interface ProjectState {
+  doc: ProjectDoc | null;
+  selectedIds: string[];
+  past: ProjectDoc[];
+  future: ProjectDoc[];
+  dirty: boolean;
+
+  newProject: (name: string, mode: ProjectMode, aspect: PanelAspect, panelCount: number) => ProjectDoc;
+  loadProject: (doc: ProjectDoc) => void;
+  closeProject: () => void;
+
+  /** Replace the doc, pushing the previous state onto the undo stack. */
+  commit: (updater: (doc: ProjectDoc) => ProjectDoc, options?: { transient?: boolean }) => void;
+  /** Mutate without a history entry (drag previews); commit later. */
+  preview: (updater: (doc: ProjectDoc) => ProjectDoc) => void;
+  undo: () => void;
+  redo: () => void;
+
+  select: (ids: string[]) => void;
+  updateLayers: (ids: string[], patch: (layer: Layer) => Layer) => void;
+  addLayer: (layer: Layer) => void;
+  removeLayers: (ids: string[]) => void;
+  duplicateLayers: (ids: string[]) => void;
+  reorderLayer: (id: string, dir: 'up' | 'down' | 'front' | 'back') => void;
+  setBackground: (bg: Background) => void;
+
+  save: () => Promise<void>;
+  markSaved: () => void;
+}
+
+export function makeProjectDoc(
+  name: string,
+  mode: ProjectMode,
+  aspect: PanelAspect,
+  panelCount: number,
+): ProjectDoc {
+  return {
+    id: uid(),
+    name,
+    mode,
+    aspect: mode === 'grid' ? '1:1' : aspect,
+    panelCount,
+    background: { kind: 'solid', color: '#ffffff' },
+    layers: [],
+    captions: Array.from({ length: mode === 'grid' ? 1 : panelCount }, () => ''),
+    gutter: 24,
+    margin: 48,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+export const useProjectStore = create<ProjectState>((set, get) => ({
+  doc: null,
+  selectedIds: [],
+  past: [],
+  future: [],
+  dirty: false,
+
+  newProject: (name, mode, aspect, panelCount) => {
+    const doc = makeProjectDoc(name, mode, aspect, panelCount);
+    set({ doc, past: [], future: [], selectedIds: [], dirty: true });
+    void db.projects.put(doc);
+    return doc;
+  },
+
+  loadProject: (doc) => set({ doc, past: [], future: [], selectedIds: [], dirty: false }),
+
+  closeProject: () => set({ doc: null, past: [], future: [], selectedIds: [], dirty: false }),
+
+  commit: (updater) => {
+    const { doc, past } = get();
+    if (!doc) return;
+    const next = { ...updater(doc), updatedAt: Date.now() };
+    set({
+      doc: next,
+      past: [...past.slice(-(HISTORY_LIMIT - 1)), doc],
+      future: [],
+      dirty: true,
+    });
+  },
+
+  preview: (updater) => {
+    const { doc } = get();
+    if (!doc) return;
+    set({ doc: updater(doc), dirty: true });
+  },
+
+  undo: () => {
+    const { doc, past, future } = get();
+    if (!doc || past.length === 0) return;
+    const prev = past[past.length - 1];
+    set({
+      doc: prev,
+      past: past.slice(0, -1),
+      future: [doc, ...future].slice(0, HISTORY_LIMIT),
+      dirty: true,
+      selectedIds: get().selectedIds.filter((id) => prev.layers.some((l) => l.id === id)),
+    });
+  },
+
+  redo: () => {
+    const { doc, past, future } = get();
+    if (!doc || future.length === 0) return;
+    const next = future[0];
+    set({
+      doc: next,
+      past: [...past.slice(-(HISTORY_LIMIT - 1)), doc],
+      future: future.slice(1),
+      dirty: true,
+    });
+  },
+
+  select: (ids) => set({ selectedIds: ids }),
+
+  updateLayers: (ids, patch) => {
+    get().commit((doc) => ({
+      ...doc,
+      layers: doc.layers.map((l) => (ids.includes(l.id) ? patch(l) : l)),
+    }));
+  },
+
+  addLayer: (layer) => {
+    get().commit((doc) => ({ ...doc, layers: [...doc.layers, layer] }));
+    set({ selectedIds: [layer.id] });
+  },
+
+  removeLayers: (ids) => {
+    get().commit((doc) => ({
+      ...doc,
+      layers: doc.layers.filter((l) => !ids.includes(l.id)),
+    }));
+    set({ selectedIds: [] });
+  },
+
+  duplicateLayers: (ids) => {
+    const { doc } = get();
+    if (!doc) return;
+    const clones: Layer[] = doc.layers
+      .filter((l) => ids.includes(l.id))
+      .map((l) => ({ ...l, id: uid(), x: l.x + 40, y: l.y + 40 }));
+    get().commit((d) => ({ ...d, layers: [...d.layers, ...clones] }));
+    set({ selectedIds: clones.map((c) => c.id) });
+  },
+
+  reorderLayer: (id, dir) => {
+    get().commit((doc) => {
+      const layers = [...doc.layers];
+      const i = layers.findIndex((l) => l.id === id);
+      if (i < 0) return doc;
+      const [layer] = layers.splice(i, 1);
+      const target =
+        dir === 'front'
+          ? layers.length
+          : dir === 'back'
+            ? 0
+            : dir === 'up'
+              ? Math.min(layers.length, i + 1)
+              : Math.max(0, i - 1);
+      layers.splice(target, 0, layer);
+      return { ...doc, layers };
+    });
+  },
+
+  setBackground: (bg) => get().commit((doc) => ({ ...doc, background: bg })),
+
+  save: async () => {
+    const { doc, dirty } = get();
+    if (!doc || !dirty) return;
+    await db.projects.put({ ...doc, updatedAt: Date.now() });
+    set({ dirty: false });
+  },
+
+  markSaved: () => set({ dirty: false }),
+}));

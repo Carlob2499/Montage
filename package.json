@@ -1,0 +1,39 @@
+{
+  "name": "montage-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Personal photo collage and seamless Instagram carousel studio. Local-first PWA — photos never leave your device.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11",
+    "dexie-react-hooks": "^1.1.7",
+    "exifr": "^7.1.3",
+    "heic2any": "^0.0.4",
+    "jszip": "^3.10.1",
+    "konva": "^9.3.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-konva": "^18.2.10",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.8",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.6",
+    "@vitejs/plugin-react": "^4.5.0",
+    "fake-indexeddb": "^6.0.1",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-pwa": "^1.0.0",
+    "vitest": "^3.2.4"
+  }
+}
