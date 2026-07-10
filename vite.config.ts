@@ -12,7 +12,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
-      workbox: {
+      // custom SW: workbox precache + Web Share Target inbox
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
@@ -37,7 +41,21 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
-      },
+        // Android: appear as a destination in the OS share sheet
+        share_target: {
+          action: '/Montage/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            files: [
+              {
+                name: 'photos',
+                accept: ['image/*', 'video/mp4', 'video/webm'],
+              },
+            ],
+          },
+        },
+      } as never,
     }),
   ],
   build: {
