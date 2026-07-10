@@ -29,9 +29,13 @@ export function findChromium() {
   }
 }
 
-export async function launchPage() {
+export async function launchPage({ welcomed = true } = {}) {
   const browser = await chromium.launch({ executablePath: findChromium() });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  if (welcomed) {
+    // skip the first-run cover page (tested separately in smoke-ui)
+    await page.addInitScript(() => localStorage.setItem('montage-welcomed', '1'));
+  }
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {

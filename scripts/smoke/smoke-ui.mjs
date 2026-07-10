@@ -2,11 +2,15 @@
 // sheets, swipe preview, export sheet, persistence.
 import { BASE, launchPage, reportAndExit } from './browser.mjs';
 
-const { browser, page, errors } = await launchPage();
+const { browser, page, errors } = await launchPage({ welcomed: false });
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
-await page.waitForSelector('text=Montage', { timeout: 10000 });
-console.log('✓ home screen renders');
+// first run shows the cover page; Explore lands on Home
+await page.waitForSelector('text=Keep it as an app', { timeout: 10000 });
+console.log('✓ cover page renders on first run');
+await page.click('text=Explore first');
+await page.waitForSelector('text=+ New project', { timeout: 10000 });
+console.log('✓ home screen renders after Start');
 
 await page.click('text=+ New project');
 await page.fill('input[placeholder*="Project name"]', 'Smoke Test');
