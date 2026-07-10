@@ -13,6 +13,7 @@ export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
   'minimal',
   'film-strip',
   'before-after',
+  'scrapbook',
 ];
 
 export interface ValidationResult {
@@ -66,6 +67,15 @@ export function validateTemplate(raw: unknown): ValidationResult {
         errors.push(`cells[${i}]: y + h exceeds canvas (${cell.y} + ${cell.h})`);
       if (cell.r !== undefined && (!isNum(cell.r) || cell.r < 0))
         errors.push(`cells[${i}].r: must be a non-negative number`);
+      if (cell.rot !== undefined && (!isNum(cell.rot) || Math.abs(cell.rot) > 45))
+        errors.push(`cells[${i}].rot: must be a number within ±45`);
+      if (
+        cell.frame !== undefined &&
+        cell.frame !== 'polaroid' &&
+        cell.frame !== 'tape' &&
+        cell.frame !== 'torn'
+      )
+        errors.push(`cells[${i}].frame: must be polaroid, tape or torn`);
     });
   }
 

@@ -6,6 +6,7 @@
 
 import JSZip from 'jszip';
 import { db } from '../db/db';
+import { normalizeStack } from './editStack';
 import type { ProjectDoc } from '../types';
 import { decodeImage } from './imageUtils';
 import { gridUploadOrder } from './slicer';
@@ -107,14 +108,15 @@ export async function loadResources(
           : ((useProxies ? await db.proxies.get(id) : null) ?? (await db.originals.get(id)));
       if (!row) continue;
       const edit = await db.edits.get(id);
+      const stack = edit ? normalizeStack(edit.stack) : undefined;
       let bitmap: ImageBitmap;
       if (!useProxies && record && record.kind === 'image') {
-        const scale = neededDecodeScale(doc, id, record.width, record.height, edit?.stack);
+        const scale = neededDecodeScale(doc, id, record.width, record.height, stack);
         bitmap = await decodeScaled(row.blob, record.width * scale, record.width);
       } else {
         bitmap = await decodeImage(row.blob);
       }
-      photos.set(id, { bitmap, stack: edit?.stack });
+      photos.set(id, { bitmap, stack });
     }
 
     for (const id of stickerIds) {

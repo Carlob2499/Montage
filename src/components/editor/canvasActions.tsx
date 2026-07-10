@@ -8,7 +8,7 @@ import { useProjectStore } from '../../state/projectStore';
 import { canvasSize } from '../../lib/slicer';
 import { autoLayout, suggestedPanelCount } from '../../lib/autoLayout';
 import type { AutoLayoutStyle } from '../../lib/autoLayout';
-import type { PhotoLayer, PhotoRecord, TemplateDef, TextLayer } from '../../types';
+import type { CardLayer, PhotoLayer, PhotoRecord, TemplateDef, TextLayer } from '../../types';
 
 type PickerTarget =
   | { kind: 'layer' }
@@ -81,12 +81,13 @@ export function applyTemplate(template: TemplateDef, replace: boolean): void {
     y: c.y * dims.height,
     width: c.w * dims.width,
     height: c.h * dims.height,
-    rotation: 0,
+    rotation: c.rot ?? 0,
     opacity: 1,
     cornerRadius: c.r ?? 0,
     imgScale: 1,
     imgOffsetX: 0,
     imgOffsetY: 0,
+    frameStyle: c.frame,
   }));
 
   const textLayers: TextLayer[] = (template.texts ?? []).map((t) => ({
@@ -263,6 +264,54 @@ export function addTextLayer(): void {
     lineHeight: 1.15,
     fill: '#18181b',
     align: 'left',
+  };
+  store.addLayer(layer);
+}
+
+/** 90s point-and-shoot date stamp in the current panel's corner */
+export function addDateStamp(date = new Date()): void {
+  const store = useProjectStore.getState();
+  const doc = store.doc;
+  if (!doc) return;
+  const { height } = canvasSize(doc);
+  const text = `'${String(date.getFullYear()).slice(2)} ${date.getMonth() + 1} ${date.getDate()}`;
+  const layer: TextLayer = {
+    id: uid(),
+    type: 'text',
+    text,
+    x: 720,
+    y: height - 160,
+    rotation: 0,
+    opacity: 0.92,
+    fontFamily: 'Space Grotesk',
+    fontSize: 56,
+    fontWeight: 600,
+    letterSpacing: 6,
+    lineHeight: 1,
+    fill: '#ff9a3c',
+    align: 'left',
+  };
+  store.addLayer(layer);
+}
+
+/** frosted caption card (glassmorphism) */
+export function addCardLayer(glass: boolean): void {
+  const store = useProjectStore.getState();
+  const doc = store.doc;
+  if (!doc) return;
+  const { height } = canvasSize(doc);
+  const layer: CardLayer = {
+    id: uid(),
+    type: 'card',
+    x: 140,
+    y: height / 2 - 160,
+    width: 800,
+    height: 320,
+    rotation: 0,
+    opacity: 1,
+    cornerRadius: 32,
+    fill: glass ? 'rgba(255,255,255,0.28)' : '#ffffff',
+    glass,
   };
   store.addLayer(layer);
 }

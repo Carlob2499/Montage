@@ -5,11 +5,12 @@
 // by construction. Output canvases are sRGB (browser default).
 // ---------------------------------------------------------------------------
 
-import type { Background, Layer, PhotoLayer, ProjectDoc, TextLayer } from '../types';
+import type { Background, CardLayer, Layer, PhotoLayer, ProjectDoc, TextLayer } from '../types';
 import { canvasSize, gridTileRect, panelRect, rotatedBBox } from './slicer';
 import type { Rect } from './slicer';
 import { applyAdjustments, isNeutral } from './editStack';
 import { coverCrop } from './imageUtils';
+import { frameContentRect, tapeStrips, tornEdgePath, tracePath } from './frameStyles';
 import type { EditStack } from '../types';
 
 export interface PhotoResource {
@@ -52,8 +53,7 @@ function paintBackground(
         cx + Math.cos(rad) * r,
         cy + Math.sin(rad) * r,
       );
-      g.addColorStop(0, bg.from);
-      g.addColorStop(1, bg.to);
+      applyStops(g, bg.stops, bg.from, bg.to);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, fullW, fullH);
       break;
@@ -67,8 +67,7 @@ function paintBackground(
         fullH / 2,
         Math.max(fullW, fullH) / 1.5,
       );
-      g.addColorStop(0, bg.from);
-      g.addColorStop(1, bg.to);
+      applyStops(g, bg.stops, bg.from, bg.to);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, fullW, fullH);
       break;
@@ -141,6 +140,20 @@ function blurredBackdrop(
   return out;
 }
 
+function applyStops(
+  g: CanvasGradient,
+  stops: { color: string; at: number }[] | undefined,
+  from: string,
+  to: string,
+): void {
+  if (stops && stops.length >= 2) {
+    for (const s of stops) g.addColorStop(s.at, s.color);
+  } else {
+    g.addColorStop(0, from);
+    g.addColorStop(1, to);
+  }
+}
+
 function roundedRectPath(ctx: Ctx, w: number, h: number, r: number): void {
   const rad = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -198,9 +211,11 @@ function renderPhotoContentRegion(
   res: PhotoResource,
   resources: RenderResources,
   rect: { x: number; y: number; width: number; height: number },
+  contentW: number,
+  contentH: number,
 ): OffscreenCanvas {
-  const w = Math.max(1, Math.round(layer.width));
-  const h = Math.max(1, Math.round(layer.height));
+  const w = Math.max(1, Math.round(contentW));
+  const h = Math.max(1, Math.round(contentH));
   const { source, iw, ih } = croppedSource(layer.photoId, res, resources);
   const { sx, sy, sw, sh } = coverCrop(
     iw,
@@ -256,14 +271,40 @@ function paintPhotoLayer(
   ctx.translate(layer.x, layer.y);
   ctx.rotate((layer.rotation * Math.PI) / 180);
   ctx.globalAlpha = layer.opacity;
-  if (layer.cornerRadius > 0) {
+
+  const content = frameContentRect(layer.frameStyle, layer.width, layer.height);
+
+  // frame backing (drawn before the photo)
+  if (layer.frameStyle === 'polaroid') {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.28)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 5;
+    ctx.fillStyle = '#fdfdf8';
+    ctx.fillRect(0, 0, layer.width, layer.height);
+    ctx.restore();
+  }
+  if (layer.frameStyle === 'torn') {
+    const pts = tornEdgePath(layer.width, layer.height, layer.id);
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+    tracePath(ctx, pts);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+    tracePath(ctx, pts);
+    ctx.clip();
+  } else if (layer.cornerRadius > 0 && !layer.frameStyle) {
     roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
     ctx.clip();
   }
+
   if (!res) {
     // unfilled placeholder — export as subtle neutral block
     ctx.fillStyle = 'rgba(127,127,127,0.15)';
-    ctx.fillRect(0, 0, layer.width, layer.height);
+    ctx.fillRect(content.x, content.y, content.width, content.height);
     ctx.restore();
     return;
   }
@@ -272,49 +313,103 @@ function paintPhotoLayer(
     // Axis-aligned: render ONLY the region-intersecting slice (plus pad).
     // Bounds memory for panorama-wide layers (a 20-panel photo never
     // allocates a 29-megapixel canvas) and skips per-panel recompute.
-    const visX = Math.max(0, Math.floor(region.x - layer.x));
-    const visY = Math.max(0, Math.floor(region.y - layer.y));
-    const visX2 = Math.min(layer.width, Math.ceil(region.x + region.width - layer.x));
-    const visY2 = Math.min(layer.height, Math.ceil(region.y + region.height - layer.y));
-    if (visX2 <= visX || visY2 <= visY) {
-      ctx.restore();
-      return;
+    const originX = layer.x + content.x;
+    const originY = layer.y + content.y;
+    const visX = Math.max(0, Math.floor(region.x - originX));
+    const visY = Math.max(0, Math.floor(region.y - originY));
+    const visX2 = Math.min(content.width, Math.ceil(region.x + region.width - originX));
+    const visY2 = Math.min(content.height, Math.ceil(region.y + region.height - originY));
+    if (visX2 > visX && visY2 > visY) {
+      const padX = Math.max(0, visX - CONTENT_PAD);
+      const padY = Math.max(0, visY - CONTENT_PAD);
+      const padX2 = Math.min(content.width, visX2 + CONTENT_PAD);
+      const padY2 = Math.min(content.height, visY2 + CONTENT_PAD);
+      const slice = renderPhotoContentRegion(
+        layer,
+        res,
+        resources,
+        {
+          x: padX,
+          y: padY,
+          width: Math.round(padX2 - padX),
+          height: Math.round(padY2 - padY),
+        },
+        content.width,
+        content.height,
+      );
+      ctx.drawImage(
+        slice,
+        visX - padX,
+        visY - padY,
+        visX2 - visX,
+        visY2 - visY,
+        content.x + visX,
+        content.y + visY,
+        visX2 - visX,
+        visY2 - visY,
+      );
     }
-    const padX = Math.max(0, visX - CONTENT_PAD);
-    const padY = Math.max(0, visY - CONTENT_PAD);
-    const padX2 = Math.min(layer.width, visX2 + CONTENT_PAD);
-    const padY2 = Math.min(layer.height, visY2 + CONTENT_PAD);
-    const slice = renderPhotoContentRegion(layer, res, resources, {
-      x: padX,
-      y: padY,
-      width: Math.round(padX2 - padX),
-      height: Math.round(padY2 - padY),
-    });
-    ctx.drawImage(
-      slice,
-      visX - padX,
-      visY - padY,
-      visX2 - visX,
-      visY2 - visY,
-      visX,
-      visY,
-      visX2 - visX,
-      visY2 - visY,
-    );
   } else {
     // Rotated: render the full content once and cache it across panels.
     resources.contentCache ??= new Map();
-    let content = resources.contentCache.get(layer.id);
-    if (!content) {
-      content = renderPhotoContentRegion(layer, res, resources, {
-        x: 0,
-        y: 0,
-        width: Math.max(1, Math.round(layer.width)),
-        height: Math.max(1, Math.round(layer.height)),
-      });
-      resources.contentCache.set(layer.id, content);
+    let cached = resources.contentCache.get(layer.id);
+    if (!cached) {
+      cached = renderPhotoContentRegion(
+        layer,
+        res,
+        resources,
+        {
+          x: 0,
+          y: 0,
+          width: Math.max(1, Math.round(content.width)),
+          height: Math.max(1, Math.round(content.height)),
+        },
+        content.width,
+        content.height,
+      );
+      resources.contentCache.set(layer.id, cached);
     }
-    ctx.drawImage(content, 0, 0);
+    ctx.drawImage(cached, content.x, content.y);
+  }
+
+  // washi tape strips over the photo
+  if (layer.frameStyle === 'tape') {
+    for (const strip of tapeStrips(layer.width, layer.height, layer.id)) {
+      ctx.save();
+      ctx.translate(strip.cx, strip.cy);
+      ctx.rotate((strip.rotation * Math.PI) / 180);
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(-strip.width / 2, -strip.height / 2, strip.width, strip.height);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+function paintCardLayer(ctx: Ctx, layer: CardLayer): void {
+  ctx.save();
+  ctx.translate(layer.x, layer.y);
+  ctx.rotate((layer.rotation * Math.PI) / 180);
+  ctx.globalAlpha = layer.opacity;
+  roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
+  ctx.fillStyle = layer.fill;
+  ctx.fill();
+  if (layer.glass) {
+    // top sheen + hairline border — the glassmorphism read
+    ctx.save();
+    roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
+    ctx.clip();
+    const sheen = ctx.createLinearGradient(0, 0, 0, layer.height);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.32)');
+    sheen.addColorStop(0.45, 'rgba(255,255,255,0.04)');
+    sheen.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, 0, layer.width, layer.height);
+    ctx.restore();
+    roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -462,6 +557,7 @@ export function renderRegion(
     }
     if (layer.type === 'photo') paintPhotoLayer(ctx, layer, resources, region);
     else if (layer.type === 'text') paintTextLayer(ctx, layer);
+    else if (layer.type === 'card') paintCardLayer(ctx, layer);
     else paintStickerLayer(ctx, layer, resources);
   }
   return canvas;

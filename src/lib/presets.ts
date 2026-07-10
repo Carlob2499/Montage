@@ -115,6 +115,23 @@ export const FILTER_PRESETS: FilterPreset[] = [
     contrast: 6,
     shadows: 10,
   }),
+  preset('halide', 'Halide', 'Grainy 35mm film', {
+    grain: 45,
+    contrast: 14,
+    temperature: 8,
+    highlights: -12,
+    shadows: 8,
+    saturation: -10,
+    vignette: 18,
+  }),
+  preset('flashback', 'Flashback', 'Direct-flash disposable', {
+    grain: 30,
+    exposure: 12,
+    contrast: 22,
+    highlights: -20,
+    temperature: 5,
+    vignette: 35,
+  }),
 ];
 
 export function getPreset(id: string): FilterPreset | undefined {

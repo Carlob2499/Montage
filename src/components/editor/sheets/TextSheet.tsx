@@ -1,6 +1,7 @@
 import Sheet from '../../shared/Sheet';
 import { useProjectStore } from '../../../state/projectStore';
 import { FONTS } from '../../../lib/fonts';
+import { addCardLayer, addDateStamp } from '../canvasActions';
 import type { TextLayer } from '../../../types';
 
 const SWATCHES = [
@@ -17,7 +18,10 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
   if (!layer) {
     return (
       <Sheet title="Text" onClose={onClose}>
-        <p className="text-sm text-ink-400">Select a text layer (or add one from the toolbar).</p>
+        <p className="mb-3 text-sm text-ink-400">
+          Select a text layer (or add one from the toolbar).
+        </p>
+        <QuickAdds />
       </Sheet>
     );
   }
@@ -95,6 +99,7 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+        <QuickAdds />
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0 text-xs text-ink-500">Color</span>
           <div className="flex flex-1 flex-wrap gap-1.5">
@@ -119,6 +124,22 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </Sheet>
+  );
+}
+
+function QuickAdds() {
+  return (
+    <div className="flex gap-2">
+      <button className="btn-soft flex-1 text-xs" onClick={() => addDateStamp()}>
+        🕘 Date stamp
+      </button>
+      <button className="btn-soft flex-1 text-xs" onClick={() => addCardLayer(true)}>
+        🧊 Glass card
+      </button>
+      <button className="btn-soft flex-1 text-xs" onClick={() => addCardLayer(false)}>
+        ▭ Color card
+      </button>
+    </div>
   );
 }
 

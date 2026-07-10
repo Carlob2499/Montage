@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
-import { Group, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
+import { Group, Image as KonvaImage, Line, Rect, Text as KonvaText } from 'react-konva';
 import type Konva from 'konva';
+import { frameContentRect, tapeStrips, tornEdgePath, tracePath } from '../../../lib/frameStyles';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../../db/db';
@@ -8,7 +9,7 @@ import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
 import { useBlobImage } from '../../../hooks/useBlobUrl';
 import { coverCrop } from '../../../lib/imageUtils';
-import { applyAdjustments, isNeutral } from '../../../lib/editStack';
+import { applyAdjustments, isNeutral, normalizeAdjustments } from '../../../lib/editStack';
 import type { Layer, PhotoLayer } from '../../../types';
 
 // memoized: during a drag only the dragged layer's object identity changes,
@@ -61,7 +62,7 @@ function PhotoNode({
     return canvas;
   }, [img, edit?.stack.crop]);
 
-  const adjustments = edit?.stack.adjustments;
+  const adjustments = edit ? normalizeAdjustments(edit.stack.adjustments) : undefined;
   const hasFilter = !!adjustments && !isNeutral(adjustments);
 
   const filterFn = useMemo(() => {
@@ -86,12 +87,25 @@ function PhotoNode({
     node.getLayer()?.batchDraw();
   }, [hasFilter, filterFn, source, layer.width, layer.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
 
+  const content = useMemo(
+    () => frameContentRect(layer.frameStyle, layer.width, layer.height),
+    [layer.frameStyle, layer.width, layer.height],
+  );
+
   const crop = useMemo(() => {
     if (!source) return undefined;
     const iw = source.width;
     const ih = source.height;
-    return coverCrop(iw, ih, layer.width, layer.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY);
-  }, [source, layer.width, layer.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
+    return coverCrop(iw, ih, content.width, content.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY);
+  }, [source, content.width, content.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
+
+  const tornPts = useMemo(
+    () =>
+      layer.frameStyle === 'torn'
+        ? tornEdgePath(layer.width, layer.height, layer.id)
+        : null,
+    [layer.frameStyle, layer.width, layer.height, layer.id],
+  );
 
   const selectMe = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     e.cancelBubble = true;
@@ -141,6 +155,27 @@ function PhotoNode({
 
   const r = Math.min(layer.cornerRadius, layer.width / 2, layer.height / 2);
 
+  const clipFunc =
+    layer.frameStyle === 'torn' && tornPts
+      ? (ctx: Konva.Context) => tracePath(ctx, tornPts)
+      : layer.frameStyle
+        ? undefined
+        : (ctx: Konva.Context) => {
+            const w = layer.width;
+            const h = layer.height;
+            ctx.beginPath();
+            if (r > 0) {
+              ctx.moveTo(r, 0);
+              ctx.arcTo(w, 0, w, h, r);
+              ctx.arcTo(w, h, 0, h, r);
+              ctx.arcTo(0, h, 0, 0, r);
+              ctx.arcTo(0, 0, w, 0, r);
+            } else {
+              ctx.rect(0, 0, w, h);
+            }
+            ctx.closePath();
+          };
+
   return (
     <Group
       ref={groupRef}
@@ -157,55 +192,85 @@ function PhotoNode({
       onDblClick={openContent}
       onDblTap={openContent}
       onTransformEnd={onTransformEnd}
-      clipFunc={(ctx) => {
-        const w = layer.width;
-        const h = layer.height;
-        ctx.beginPath();
-        if (r > 0) {
-          ctx.moveTo(r, 0);
-          ctx.arcTo(w, 0, w, h, r);
-          ctx.arcTo(w, h, 0, h, r);
-          ctx.arcTo(0, h, 0, 0, r);
-          ctx.arcTo(0, 0, w, 0, r);
-        } else {
-          ctx.rect(0, 0, w, h);
-        }
-        ctx.closePath();
-      }}
     >
-      {source && crop ? (
-        <KonvaImage
-          ref={imageRef}
-          image={source}
-          x={0}
-          y={0}
+      {/* frame backing — outside the clip so shadows render */}
+      {layer.frameStyle === 'polaroid' && (
+        <Rect
           width={layer.width}
           height={layer.height}
-          crop={{ x: crop.sx, y: crop.sy, width: crop.sw, height: crop.sh }}
-          filters={filterFn ? [filterFn] : undefined}
+          fill="#fdfdf8"
+          shadowColor="rgba(0,0,0,0.28)"
+          shadowBlur={14}
+          shadowOffsetY={5}
           perfectDrawEnabled={false}
         />
-      ) : (
-        <>
-          <Rect
-            width={layer.width}
-            height={layer.height}
-            fill="rgba(127,127,127,0.12)"
-            stroke="#9ca3af"
-            strokeWidth={2}
-            dash={[12, 10]}
-          />
-          <KonvaText
-            width={layer.width}
-            height={layer.height}
-            text={layer.photoId ? '…' : '+ tap to fill'}
-            align="center"
-            verticalAlign="middle"
-            fontSize={Math.max(20, Math.min(40, layer.width / 8))}
-            fill="#9ca3af"
-          />
-        </>
       )}
+      {layer.frameStyle === 'torn' && tornPts && (
+        <Line
+          points={tornPts.flatMap((p) => [p.x, p.y])}
+          closed
+          fill="#ffffff"
+          shadowColor="rgba(0,0,0,0.25)"
+          shadowBlur={10}
+          shadowOffsetY={4}
+          perfectDrawEnabled={false}
+        />
+      )}
+      <Group clipFunc={clipFunc}>
+        {source && crop ? (
+          <KonvaImage
+            ref={imageRef}
+            image={source}
+            x={content.x}
+            y={content.y}
+            width={content.width}
+            height={content.height}
+            crop={{ x: crop.sx, y: crop.sy, width: crop.sw, height: crop.sh }}
+            filters={filterFn ? [filterFn] : undefined}
+            perfectDrawEnabled={false}
+          />
+        ) : (
+          <>
+            <Rect
+              x={content.x}
+              y={content.y}
+              width={content.width}
+              height={content.height}
+              fill="rgba(127,127,127,0.12)"
+              stroke="#9ca3af"
+              strokeWidth={2}
+              dash={[12, 10]}
+            />
+            <KonvaText
+              x={content.x}
+              y={content.y}
+              width={content.width}
+              height={content.height}
+              text={layer.photoId ? '…' : '+ tap to fill'}
+              align="center"
+              verticalAlign="middle"
+              fontSize={Math.max(20, Math.min(40, layer.width / 8))}
+              fill="#9ca3af"
+            />
+          </>
+        )}
+      </Group>
+      {layer.frameStyle === 'tape' &&
+        tapeStrips(layer.width, layer.height, layer.id).map((s, i) => (
+          <Rect
+            key={i}
+            x={s.cx}
+            y={s.cy}
+            offsetX={s.width / 2}
+            offsetY={s.height / 2}
+            width={s.width}
+            height={s.height}
+            rotation={s.rotation}
+            fill="rgba(255,255,255,0.45)"
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+        ))}
       {isVideo && (
         <KonvaText
           x={12}

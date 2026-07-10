@@ -13,6 +13,44 @@ const GRADIENTS: [string, string][] = [
   ['#e5e7eb', '#f9fafb'],
   ['#2b2140', '#120d1d'],
 ];
+// trend palettes: soft multi-stop "sunset" gradients
+const MULTI_GRADIENTS: { name: string; stops: { color: string; at: number }[] }[] = [
+  {
+    name: 'Dusk',
+    stops: [
+      { color: '#2d1b4e', at: 0 },
+      { color: '#7c3aed', at: 0.35 },
+      { color: '#f472b6', at: 0.7 },
+      { color: '#fcd9a8', at: 1 },
+    ],
+  },
+  {
+    name: 'Peach fizz',
+    stops: [
+      { color: '#fff1e6', at: 0 },
+      { color: '#ffd6ba', at: 0.4 },
+      { color: '#fca5a5', at: 0.75 },
+      { color: '#c084fc', at: 1 },
+    ],
+  },
+  {
+    name: 'Lagoon',
+    stops: [
+      { color: '#0c4a6e', at: 0 },
+      { color: '#0891b2', at: 0.45 },
+      { color: '#67e8f9', at: 0.8 },
+      { color: '#ecfeff', at: 1 },
+    ],
+  },
+  {
+    name: 'Matcha',
+    stops: [
+      { color: '#f7fee7', at: 0 },
+      { color: '#bef264', at: 0.5 },
+      { color: '#4d7c0f', at: 1 },
+    ],
+  },
+];
 
 export default function BackgroundSheet({ onClose }: { onClose: () => void }) {
   const bg = useProjectStore((s) => s.doc?.background);
@@ -67,6 +105,29 @@ export default function BackgroundSheet({ onClose }: { onClose: () => void }) {
                 className="h-10 w-14 rounded-xl border border-ink-200 dark:border-ink-600"
                 style={{ background: `radial-gradient(circle, ${from}, ${to})` }}
                 onClick={() => set({ kind: 'radial', from, to })}
+              />
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {MULTI_GRADIENTS.map((g) => (
+              <button
+                key={g.name}
+                title={g.name}
+                className="h-10 w-14 rounded-xl border border-ink-200 dark:border-ink-600"
+                style={{
+                  background: `linear-gradient(160deg, ${g.stops
+                    .map((s) => `${s.color} ${s.at * 100}%`)
+                    .join(', ')})`,
+                }}
+                onClick={() =>
+                  set({
+                    kind: 'linear',
+                    from: g.stops[0].color,
+                    to: g.stops[g.stops.length - 1].color,
+                    angle: 160,
+                    stops: g.stops,
+                  })
+                }
               />
             ))}
           </div>

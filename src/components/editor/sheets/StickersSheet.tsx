@@ -49,11 +49,29 @@ export default function StickersSheet({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
+  const addStarterPack = async () => {
+    const { generateStarterPack } = await import('../../../lib/stickerPack');
+    const existing = new Set((await db.stickers.toArray()).map((s) => s.name));
+    const pack = await generateStarterPack();
+    let added = 0;
+    for (const s of pack) {
+      if (existing.has(s.name)) continue;
+      await db.stickers.add({ id: uid(), name: s.name, dateAdded: Date.now(), blob: s.blob });
+      added++;
+    }
+    toast(added ? `Added ${added} starter sticker(s)` : 'Starter pack already added', 'success');
+  };
+
   return (
     <Sheet title="Stickers & overlays" onClose={onClose}>
-      <button className="btn-soft mb-3 w-full" onClick={() => fileRef.current?.click()}>
-        + Upload PNG / WebP
-      </button>
+      <div className="mb-3 flex gap-2">
+        <button className="btn-soft flex-1" onClick={() => fileRef.current?.click()}>
+          + Upload PNG / WebP
+        </button>
+        <button className="btn-soft flex-1" onClick={() => void addStarterPack()}>
+          ✨ Starter pack
+        </button>
+      </div>
       <input
         ref={fileRef}
         type="file"

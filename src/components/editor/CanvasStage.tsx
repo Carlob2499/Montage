@@ -7,10 +7,11 @@ import { canvasSize, seamPositions, seamsCrossed } from '../../lib/slicer';
 import { collectSnapTargets, snapBox } from '../../lib/snapping';
 import { layerBBox } from '../../lib/renderer';
 import { PANEL_WIDTH } from '../../types';
-import type { Layer, PhotoLayer, StickerLayer, TextLayer } from '../../types';
+import type { CardLayer, Layer, PhotoLayer, StickerLayer, TextLayer } from '../../types';
 import PhotoNode from './nodes/PhotoNode';
 import TextNode from './nodes/TextNode';
 import StickerNode from './nodes/StickerNode';
+import CardNode from './nodes/CardNode';
 import { gridUploadOrder } from '../../lib/slicer';
 import { useBlobImage } from '../../hooks/useBlobUrl';
 
@@ -213,6 +214,13 @@ export default function CanvasStage({
                 onDragMove={handleDragMove}
                 onDragEnd={handleDragEnd}
               />
+            ) : layer.type === 'card' ? (
+              <CardNode
+                key={layer.id}
+                layer={layer as CardLayer}
+                onDragMove={handleDragMove}
+                onDragEnd={handleDragEnd}
+              />
             ) : (
               <StickerNode
                 key={layer.id}
@@ -307,17 +315,25 @@ function BackgroundRect({ dims }: { dims: { width: number; height: number } }) {
     const r = Math.sqrt(dims.width ** 2 + dims.height ** 2) / 2;
     const cx = dims.width / 2;
     const cy = dims.height / 2;
+    const stops =
+      bg.stops && bg.stops.length >= 2
+        ? bg.stops.flatMap((s) => [s.at, s.color])
+        : [0, bg.from, 1, bg.to];
     return (
       <Rect
         {...common}
         {...shadow}
         fillLinearGradientStartPoint={{ x: cx - Math.cos(rad) * r, y: cy - Math.sin(rad) * r }}
         fillLinearGradientEndPoint={{ x: cx + Math.cos(rad) * r, y: cy + Math.sin(rad) * r }}
-        fillLinearGradientColorStops={[0, bg.from, 1, bg.to]}
+        fillLinearGradientColorStops={stops}
       />
     );
   }
   if (bg.kind === 'radial') {
+    const stops =
+      bg.stops && bg.stops.length >= 2
+        ? bg.stops.flatMap((s) => [s.at, s.color])
+        : [0, bg.from, 1, bg.to];
     return (
       <Rect
         {...common}
@@ -326,7 +342,7 @@ function BackgroundRect({ dims }: { dims: { width: number; height: number } }) {
         fillRadialGradientEndPoint={{ x: dims.width / 2, y: dims.height / 2 }}
         fillRadialGradientStartRadius={0}
         fillRadialGradientEndRadius={Math.max(dims.width, dims.height) / 1.5}
-        fillRadialGradientColorStops={[0, bg.from, 1, bg.to]}
+        fillRadialGradientColorStops={stops}
       />
     );
   }

@@ -11,6 +11,7 @@ import {
   applyPresetToStack,
   copyStackForPaste,
   neutralStack,
+  normalizeStack,
 } from '../../lib/editStack';
 import type { Adjustments, CropState, EditStack } from '../../types';
 
@@ -25,6 +26,7 @@ const ADJUSTMENT_DEFS: { key: keyof Adjustments; label: string; min: number; max
   { key: 'tint', label: 'Tint', min: -100, max: 100 },
   { key: 'sharpness', label: 'Sharpness', min: 0, max: 100 },
   { key: 'vignette', label: 'Vignette', min: 0, max: 100 },
+  { key: 'grain', label: 'Film grain', min: 0, max: 100 },
 ];
 
 const CROP_PRESETS: { label: string; ratio: number | null }[] = [
@@ -67,7 +69,7 @@ export default function PhotoEditSheet({
     }
     if (saved?.id === photoId && loadedFor.current !== photoId) {
       loadedFor.current = photoId;
-      setStack(saved.row ? structuredClone(saved.row.stack) : neutralStack());
+      setStack(saved.row ? normalizeStack(structuredClone(saved.row.stack)) : neutralStack());
     }
   }, [saved, photoId]);
 

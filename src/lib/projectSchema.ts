@@ -5,11 +5,26 @@
 // ---------------------------------------------------------------------------
 
 import { PANEL_HEIGHTS } from '../types';
-import type { Background, Layer, PanelAspect, ProjectDoc } from '../types';
+import type { Background, GradientStop, Layer, PanelAspect, ProjectDoc } from '../types';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const num = (v: unknown, fallback: number): number => (isNum(v) ? v : fallback);
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback);
+
+function normalizeStops(raw: unknown): GradientStop[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const stops = raw
+    .filter(
+      (s): s is { color: string; at: number } =>
+        typeof s === 'object' &&
+        s !== null &&
+        typeof (s as Record<string, unknown>).color === 'string' &&
+        isNum((s as Record<string, unknown>).at),
+    )
+    .map((s) => ({ color: s.color, at: Math.min(1, Math.max(0, s.at)) }))
+    .sort((a, b) => a.at - b.at);
+  return stops.length >= 2 ? stops : undefined;
+}
 
 function normalizeBackground(raw: unknown): Background {
   const fallback: Background = { kind: 'solid', color: '#ffffff' };
@@ -20,11 +35,17 @@ function normalizeBackground(raw: unknown): Background {
       return typeof bg.color === 'string' ? { kind: 'solid', color: bg.color } : fallback;
     case 'linear':
       return typeof bg.from === 'string' && typeof bg.to === 'string'
-        ? { kind: 'linear', from: bg.from, to: bg.to, angle: num(bg.angle, 135) }
+        ? {
+            kind: 'linear',
+            from: bg.from,
+            to: bg.to,
+            angle: num(bg.angle, 135),
+            stops: normalizeStops(bg.stops),
+          }
         : fallback;
     case 'radial':
       return typeof bg.from === 'string' && typeof bg.to === 'string'
-        ? { kind: 'radial', from: bg.from, to: bg.to }
+        ? { kind: 'radial', from: bg.from, to: bg.to, stops: normalizeStops(bg.stops) }
         : fallback;
     case 'blurPhoto':
       return typeof bg.photoId === 'string'
@@ -61,6 +82,20 @@ function normalizeLayer(raw: unknown): Layer | null {
         imgOffsetX: Math.min(1, Math.max(-1, num(l.imgOffsetX, 0))),
         imgOffsetY: Math.min(1, Math.max(-1, num(l.imgOffsetY, 0))),
         isSubject: l.isSubject === true,
+        frameStyle:
+          l.frameStyle === 'polaroid' || l.frameStyle === 'tape' || l.frameStyle === 'torn'
+            ? l.frameStyle
+            : undefined,
+      };
+    case 'card':
+      return {
+        ...base,
+        type: 'card',
+        width: Math.max(12, num(l.width, 400)),
+        height: Math.max(12, num(l.height, 200)),
+        cornerRadius: Math.max(0, num(l.cornerRadius, 24)),
+        fill: str(l.fill, 'rgba(255,255,255,0.55)'),
+        glass: l.glass === true,
       };
     case 'text':
       return {

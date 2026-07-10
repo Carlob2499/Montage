@@ -12,6 +12,18 @@ export function neutralStack(): EditStack {
   return { adjustments: { ...NEUTRAL_ADJUSTMENTS } };
 }
 
+/**
+ * Stored stacks can predate newly added adjustment fields (e.g. `grain`) —
+ * always merge over the neutral set when reading from IndexedDB.
+ */
+export function normalizeAdjustments(a: Partial<Adjustments> | undefined): Adjustments {
+  return { ...NEUTRAL_ADJUSTMENTS, ...a };
+}
+
+export function normalizeStack(stack: EditStack): EditStack {
+  return { ...stack, adjustments: normalizeAdjustments(stack.adjustments) };
+}
+
 export function isNeutral(adj: Adjustments): boolean {
   return (Object.keys(NEUTRAL_ADJUSTMENTS) as (keyof Adjustments)[]).every(
     (k) => adj[k] === 0,
@@ -141,15 +153,39 @@ export function applyAdjustments(
     }
   }
 
+  const fr = frame ?? { offsetX: 0, offsetY: 0, frameWidth: width, frameHeight: height };
   if (adj.sharpness > 0) sharpen(data, width, height, adj.sharpness / 100);
-  if (adj.vignette > 0) {
-    vignette(
-      data,
-      width,
-      height,
-      adj.vignette / 100,
-      frame ?? { offsetX: 0, offsetY: 0, frameWidth: width, frameHeight: height },
-    );
+  if (adj.vignette > 0) vignette(data, width, height, adj.vignette / 100, fr);
+  if (adj.grain > 0) grain(data, width, height, adj.grain / 100, fr);
+}
+
+/** deterministic 2D hash noise in [-1, 1] — anchored to FRAME coordinates so
+ * per-panel sub-rect renders produce identical grain across seams */
+function grainNoise(x: number, y: number): number {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h & 0xffff) / 32768 - 1;
+}
+
+/** monochromatic film grain, amount 0..1 */
+function grain(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  amount: number,
+  frame: FrameContext,
+): void {
+  const strength = amount * 22;
+  for (let y = 0; y < height; y++) {
+    const fy = y + frame.offsetY;
+    for (let x = 0; x < width; x++) {
+      const n = grainNoise(x + frame.offsetX, fy) * strength;
+      const i = (y * width + x) * 4;
+      data[i] = clamp255(data[i] + n);
+      data[i + 1] = clamp255(data[i + 1] + n);
+      data[i + 2] = clamp255(data[i + 2] + n);
+    }
   }
 }
 

@@ -2,7 +2,7 @@ import Sheet from '../../shared/Sheet';
 import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
 import { Slider } from './TextSheet';
-import type { Layer, PhotoLayer } from '../../../types';
+import type { CardLayer, FrameStyle, Layer, PhotoLayer } from '../../../types';
 
 export default function LayersSheet({ onClose }: { onClose: () => void }) {
   const doc = useProjectStore((s) => s.doc);
@@ -40,6 +40,7 @@ export default function LayersSheet({ onClose }: { onClose: () => void }) {
           {selected.type === 'photo' && (
             <PhotoControls layer={selected as PhotoLayer} />
           )}
+          {selected.type === 'card' && <CardControls layer={selected as CardLayer} />}
           <div className="flex gap-2">
             <button
               className="btn-soft flex-1 text-xs"
@@ -68,12 +69,40 @@ export default function LayersSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+const FRAME_STYLES: { value: FrameStyle | undefined; label: string }[] = [
+  { value: undefined, label: 'Plain' },
+  { value: 'polaroid', label: 'Polaroid' },
+  { value: 'tape', label: 'Taped' },
+  { value: 'torn', label: 'Torn' },
+];
+
 function PhotoControls({ layer }: { layer: PhotoLayer }) {
   const store = useProjectStore.getState();
   const patch = (p: Partial<PhotoLayer>) =>
     store.updateLayers([layer.id], (l) => ({ ...(l as PhotoLayer), ...p }), { transient: true });
   return (
     <>
+      <div className="flex items-center gap-1.5">
+        <span className="w-14 shrink-0 text-xs text-ink-500">Frame</span>
+        {FRAME_STYLES.map((f) => (
+          <button
+            key={f.label}
+            className={`btn flex-1 border px-1 text-xs ${
+              layer.frameStyle === f.value
+                ? 'border-accent-500 bg-accent-500/10'
+                : 'border-ink-200 dark:border-ink-700'
+            }`}
+            onClick={() =>
+              store.updateLayers([layer.id], (l) => ({
+                ...(l as PhotoLayer),
+                frameStyle: f.value,
+              }))
+            }
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       <Slider
         label="Zoom in frame"
         min={1}
@@ -131,6 +160,47 @@ function PhotoControls({ layer }: { layer: PhotoLayer }) {
   );
 }
 
+function CardControls({ layer }: { layer: CardLayer }) {
+  const store = useProjectStore.getState();
+  const patch = (p: Partial<CardLayer>, transient = true) =>
+    store.updateLayers([layer.id], (l) => ({ ...(l as CardLayer), ...p }), { transient });
+  return (
+    <>
+      <Slider
+        label="Corner radius"
+        min={0}
+        max={200}
+        value={layer.cornerRadius}
+        onChange={(v) => patch({ cornerRadius: v })}
+      />
+      <label className="flex items-center justify-between rounded-xl bg-ink-100 px-3 py-2.5 text-sm dark:bg-ink-800">
+        <span>Glass effect</span>
+        <input
+          type="checkbox"
+          className="h-5 w-5 accent-blue-500"
+          checked={layer.glass}
+          onChange={(e) => patch({ glass: e.target.checked }, false)}
+        />
+      </label>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-ink-500">Tint</span>
+        {['rgba(255,255,255,0.28)', 'rgba(16,16,20,0.35)', '#ffffff', '#101014', '#f5e9d0'].map(
+          (c) => (
+            <button
+              key={c}
+              className={`h-7 w-7 rounded-full border border-ink-200 dark:border-ink-600 ${
+                layer.fill === c ? 'ring-2 ring-accent-500 ring-offset-1' : ''
+              }`}
+              style={{ background: c }}
+              onClick={() => patch({ fill: c }, false)}
+            />
+          ),
+        )}
+      </div>
+    </>
+  );
+}
+
 function LayerRow({ layer, active }: { layer: Layer; active: boolean }) {
   const store = useProjectStore.getState();
   return (
@@ -141,7 +211,7 @@ function LayerRow({ layer, active }: { layer: Layer; active: boolean }) {
       onClick={() => store.select([layer.id])}
     >
       <span className="text-base">
-        {layer.type === 'photo' ? '🖼' : layer.type === 'text' ? '🅃' : '✦'}
+        {layer.type === 'photo' ? '🖼' : layer.type === 'text' ? '🅃' : layer.type === 'card' ? '▭' : '✦'}
       </span>
       <span className="min-w-0 flex-1 truncate">{layerLabel(layer)}</span>
       {layer.locked && <span className="text-xs">🔒</span>}
@@ -152,5 +222,6 @@ function LayerRow({ layer, active }: { layer: Layer; active: boolean }) {
 function layerLabel(layer: Layer): string {
   if (layer.type === 'text') return layer.text.split('\n')[0].slice(0, 28) || 'Text';
   if (layer.type === 'photo') return layer.name ?? (layer.photoId ? 'Photo' : 'Empty cell');
+  if (layer.type === 'card') return layer.glass ? 'Glass card' : 'Card';
   return 'Sticker';
 }

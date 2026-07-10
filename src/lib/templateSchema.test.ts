@@ -97,11 +97,28 @@ describe('bundled template library', () => {
     expect(valid).toHaveLength(TEMPLATES.length);
   });
 
-  it('covers all six categories', () => {
+  it('covers all seven categories', () => {
     const cats = new Set(TEMPLATES.map((t) => t.category));
     expect(cats).toEqual(
-      new Set(['travel', 'event', 'editorial', 'minimal', 'film-strip', 'before-after']),
+      new Set([
+        'travel',
+        'event',
+        'editorial',
+        'minimal',
+        'film-strip',
+        'before-after',
+        'scrapbook',
+      ]),
     );
+  });
+
+  it('scrapbook cells carry valid rotation and frame styles', () => {
+    const scrap = TEMPLATES.filter((t) => t.category === 'scrapbook');
+    expect(scrap.length).toBeGreaterThanOrEqual(5);
+    const frames = new Set(
+      scrap.flatMap((t) => t.cells.map((c) => c.frame).filter(Boolean)),
+    );
+    expect(frames).toEqual(new Set(['polaroid', 'tape', 'torn']));
   });
 
   it('includes multi-panel seamless layouts', () => {

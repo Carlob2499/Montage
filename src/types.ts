@@ -62,6 +62,8 @@ export interface Adjustments {
   sharpness: number;
   /** 0..100 */
   vignette: number;
+  /** 0..100 — film grain (deterministic, seam-continuous) */
+  grain: number;
 }
 
 export const NEUTRAL_ADJUSTMENTS: Adjustments = {
@@ -75,6 +77,7 @@ export const NEUTRAL_ADJUSTMENTS: Adjustments = {
   tint: 0,
   sharpness: 0,
   vignette: 0,
+  grain: 0,
 };
 
 export interface CropState {
@@ -107,6 +110,9 @@ interface LayerBase {
   name?: string;
 }
 
+/** decorative photo frame treatments (scrapbook kit) */
+export type FrameStyle = 'polaroid' | 'tape' | 'torn';
+
 export interface PhotoLayer extends LayerBase {
   type: 'photo';
   /** empty string = unfilled template placeholder */
@@ -121,6 +127,8 @@ export interface PhotoLayer extends LayerBase {
   imgOffsetY: number;
   /** mark as key subject for seam-safety warnings */
   isSubject?: boolean;
+  /** scrapbook frame treatment (undefined = plain) */
+  frameStyle?: FrameStyle;
 }
 
 export interface TextLayer extends LayerBase {
@@ -143,14 +151,32 @@ export interface StickerLayer extends LayerBase {
   height: number;
 }
 
-export type Layer = PhotoLayer | TextLayer | StickerLayer;
+/** color block / frosted-glass caption card */
+export interface CardLayer extends LayerBase {
+  type: 'card';
+  width: number;
+  height: number;
+  cornerRadius: number;
+  /** any CSS color, including rgba() for translucency */
+  fill: string;
+  /** glassmorphism styling: highlight sheen + hairline border */
+  glass: boolean;
+}
+
+export type Layer = PhotoLayer | TextLayer | StickerLayer | CardLayer;
 
 // --- Background ---------------------------------------------------------------
 
+export interface GradientStop {
+  color: string;
+  /** position 0..1 */
+  at: number;
+}
+
 export type Background =
   | { kind: 'solid'; color: string }
-  | { kind: 'linear'; from: string; to: string; angle: number }
-  | { kind: 'radial'; from: string; to: string }
+  | { kind: 'linear'; from: string; to: string; angle: number; stops?: GradientStop[] }
+  | { kind: 'radial'; from: string; to: string; stops?: GradientStop[] }
   | { kind: 'blurPhoto'; photoId: string; blur: number; dim: number };
 
 // --- Project -------------------------------------------------------------------
@@ -190,7 +216,8 @@ export type TemplateCategory =
   | 'editorial'
   | 'minimal'
   | 'film-strip'
-  | 'before-after';
+  | 'before-after'
+  | 'scrapbook';
 
 export interface TemplateCell {
   /** fraction of full canvas width, 0..1 */
@@ -200,6 +227,10 @@ export interface TemplateCell {
   h: number;
   /** corner radius in px at export scale */
   r?: number;
+  /** rotation in degrees */
+  rot?: number;
+  /** scrapbook frame treatment */
+  frame?: FrameStyle;
 }
 
 export interface TemplateText {
