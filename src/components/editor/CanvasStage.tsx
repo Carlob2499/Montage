@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Stage, Layer as KonvaLayer, Rect, Line, Text as KonvaText, Group, Image as KonvaImage, Transformer } from 'react-konva';
-import type Konva from 'konva';
+import Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useProjectStore } from '../../state/projectStore';
 import { canvasSize, seamPositions, seamsCrossed } from '../../lib/slicer';
@@ -57,7 +57,10 @@ export default function CanvasStage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, viewport.width, viewport.height]);
 
-  // attach transformer to selected nodes
+  // Attach transformer to selected nodes. No dep array on purpose: selected
+  // nodes can mount AFTER selection (blob images load async) or be replaced
+  // by a remount — re-resolve each render and only touch the transformer
+  // when the actual node set changed.
   useEffect(() => {
     const stage = stageRef.current;
     const tr = trRef.current;
@@ -65,8 +68,11 @@ export default function CanvasStage({
     const nodes = selectedIds
       .map((id) => stage.findOne(`#node-${id}`))
       .filter(Boolean) as Konva.Node[];
-    tr.nodes(nodes);
-  }, [selectedIds, doc?.layers]);
+    const current = tr.nodes();
+    const same =
+      current.length === nodes.length && current.every((n, i) => n === nodes[i]);
+    if (!same) tr.nodes(nodes);
+  });
 
   const snapTargets = useMemo(() => {
     if (!doc) return { vertical: [], horizontal: [] };
@@ -107,33 +113,30 @@ export default function CanvasStage({
     if (e.target === e.target.getStage()) select([]);
   };
 
-  // pinch zoom
+  // pinch zoom — all view math uses functional updates: two touch events can
+  // land between renders, and a stale `view` closure would drop the first
+  // event's zoom factor and make the anchor point drift
   const onTouchMove = (e: KonvaEventObject<TouchEvent>) => {
     const touches = e.evt.touches;
     if (touches.length !== 2) return;
     e.evt.preventDefault();
-    const stage = stageRef.current!;
-    stage.draggable(false);
+    stageRef.current?.draggable(false);
     const p1 = { x: touches[0].clientX, y: touches[0].clientY };
     const p2 = { x: touches[1].clientX, y: touches[1].clientY };
     const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
     const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-    if (!pinch.current) {
-      pinch.current = { dist, center };
-      return;
-    }
-    const scaleBy = dist / pinch.current.dist;
-    const newScale = Math.min(3, Math.max(0.02, view.scale * scaleBy));
-    const mousePointTo = {
-      x: (center.x - view.x) / view.scale,
-      y: (center.y - view.y) / view.scale,
-    };
-    setView({
-      scale: newScale,
-      x: center.x - mousePointTo.x * newScale,
-      y: center.y - mousePointTo.y * newScale,
-    });
+    const prev = pinch.current;
     pinch.current = { dist, center };
+    if (!prev) return;
+    setView((v) => {
+      const newScale = Math.min(3, Math.max(0.02, v.scale * (dist / prev.dist)));
+      const pointTo = { x: (center.x - v.x) / v.scale, y: (center.y - v.y) / v.scale };
+      return {
+        scale: newScale,
+        x: center.x - pointTo.x * newScale,
+        y: center.y - pointTo.y * newScale,
+      };
+    });
   };
 
   const onTouchEnd = () => {
@@ -145,10 +148,12 @@ export default function CanvasStage({
     e.evt.preventDefault();
     if (e.evt.ctrlKey || e.evt.metaKey) {
       const scaleBy = Math.exp(-e.evt.deltaY * 0.0015);
-      const newScale = Math.min(3, Math.max(0.02, view.scale * scaleBy));
       const ptr = stageRef.current!.getPointerPosition()!;
-      const mousePointTo = { x: (ptr.x - view.x) / view.scale, y: (ptr.y - view.y) / view.scale };
-      setView({ scale: newScale, x: ptr.x - mousePointTo.x * newScale, y: ptr.y - mousePointTo.y * newScale });
+      setView((v) => {
+        const newScale = Math.min(3, Math.max(0.02, v.scale * scaleBy));
+        const pointTo = { x: (ptr.x - v.x) / v.scale, y: (ptr.y - v.y) / v.scale };
+        return { scale: newScale, x: ptr.x - pointTo.x * newScale, y: ptr.y - pointTo.y * newScale };
+      });
     } else {
       setView((v) => ({ ...v, x: v.x - e.evt.deltaX, y: v.y - e.evt.deltaY }));
     }
@@ -325,23 +330,51 @@ function BackgroundRect({ dims }: { dims: { width: number; height: number } }) {
       />
     );
   }
-  // blurPhoto — draw dimmed cover image (blur approximated at export quality)
+  // blurPhoto — real blur preview via Konva's Blur filter on a cached node
   if (!img) return <Rect {...common} fill="#222" {...shadow} />;
-  const scale = Math.max(dims.width / img.width, dims.height / img.height);
   return (
     <>
       <Rect {...common} fill="#222" {...shadow} />
-      <KonvaImage
-        image={img}
-        x={(dims.width - img.width * scale) / 2}
-        y={(dims.height - img.height * scale) / 2}
-        width={img.width * scale}
-        height={img.height * scale}
-        opacity={1 - bg.dim}
-        blurRadius={bg.blur}
-        filters={[]}
-      />
+      <BlurredBgImage img={img} dims={dims} blur={bg.blur} />
+      <Rect {...common} fill="black" opacity={bg.dim} />
     </>
+  );
+}
+
+function BlurredBgImage({
+  img,
+  dims,
+  blur,
+}: {
+  img: HTMLImageElement;
+  dims: { width: number; height: number };
+  blur: number;
+}) {
+  const ref = useRef<Konva.Image>(null);
+  // Konva filters need a cached node; cache at a low pixel ratio — it's a
+  // blur, so resolution loss is invisible and the filter pass stays cheap
+  const pixelRatio = Math.min(0.25, 900 / Math.max(dims.width, dims.height));
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    node.cache({ pixelRatio });
+    node.getLayer()?.batchDraw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img, dims.width, dims.height, blur, pixelRatio]);
+  const scale = Math.max(dims.width / img.width, dims.height / img.height);
+  return (
+    <KonvaImage
+      ref={ref}
+      image={img}
+      x={(dims.width - img.width * scale) / 2}
+      y={(dims.height - img.height * scale) / 2}
+      width={img.width * scale}
+      height={img.height * scale}
+      filters={[Konva.Filters.Blur]}
+      // blur radius operates on cached pixels: canvas px → cached px is pixelRatio
+      blurRadius={Math.max(0, blur * pixelRatio)}
+      listening={false}
+    />
   );
 }
 

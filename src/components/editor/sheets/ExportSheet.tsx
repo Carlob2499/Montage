@@ -38,17 +38,31 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
     try {
       let files: ExportedFile[];
       if (target === 'panorama') {
-        files = [await exportPanorama(doc, opts)];
+        const pano = await exportPanorama(doc, opts);
+        if (pano.scale < 1) {
+          toast(
+            `Panorama downscaled to ${Math.round(pano.scale * 100)}% to stay inside mobile canvas limits`,
+          );
+        }
+        files = [pano];
       } else if (target === 'grid' || doc.mode === 'grid') {
         files = await exportGridTiles(doc, opts);
       } else {
         files = await exportPanels(doc, opts);
       }
-      if (delivery === 'zip' && files.length > 1) {
+      if (delivery === 'zip' && target !== 'panorama') {
         const zip = await bundleZip(doc, files);
         downloadBlob(zip, `${slug(doc.name)}.zip`);
       } else {
-        for (const f of files) downloadBlob(f.blob, f.name);
+        // stagger downloads — browsers drop rapid successive programmatic
+        // downloads (mobile especially); ZIP is the reliable multi-file path
+        for (let i = 0; i < files.length; i++) {
+          downloadBlob(files[i].blob, files[i].name);
+          if (i < files.length - 1) await new Promise((r) => setTimeout(r, 400));
+        }
+        if (files.length > 3) {
+          toast('If some files didn’t save, use the ZIP delivery instead');
+        }
       }
       toast(`Exported ${files.length} file(s) ✓`, 'success');
       onClose();

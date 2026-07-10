@@ -137,6 +137,55 @@ describe('applyAdjustments (buffer)', () => {
   });
 });
 
+describe('sub-rect rendering (seam continuity)', () => {
+  it('vignette on two half-buffers with frame offsets matches the full-frame result', () => {
+    // This is the invariant that keeps sliced panels pixel-identical at the
+    // seam when a photo layer is rendered region-by-region.
+    const w = 24;
+    const h = 10;
+    const full = new Uint8ClampedArray(w * h * 4).fill(180);
+    applyAdjustments(full, w, h, adj({ vignette: 80 }));
+
+    const halfW = w / 2;
+    const left = new Uint8ClampedArray(halfW * h * 4).fill(180);
+    const right = new Uint8ClampedArray(halfW * h * 4).fill(180);
+    applyAdjustments(left, halfW, h, adj({ vignette: 80 }), {
+      offsetX: 0,
+      offsetY: 0,
+      frameWidth: w,
+      frameHeight: h,
+    });
+    applyAdjustments(right, halfW, h, adj({ vignette: 80 }), {
+      offsetX: halfW,
+      offsetY: 0,
+      frameWidth: w,
+      frameHeight: h,
+    });
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const fi = (y * w + x) * 4;
+        const half = x < halfW ? left : right;
+        const hi = (y * halfW + (x % halfW)) * 4;
+        expect(half[hi]).toBe(full[fi]);
+      }
+    }
+  });
+
+  it('color adjustments are position-independent (frame param is a no-op for them)', () => {
+    const a = new Uint8ClampedArray([100, 120, 140, 255]);
+    const b = new Uint8ClampedArray([100, 120, 140, 255]);
+    applyAdjustments(a, 1, 1, adj({ exposure: 30, contrast: 20 }));
+    applyAdjustments(b, 1, 1, adj({ exposure: 30, contrast: 20 }), {
+      offsetX: 500,
+      offsetY: 500,
+      frameWidth: 1000,
+      frameHeight: 1000,
+    });
+    expect([...a]).toEqual([...b]);
+  });
+});
+
 describe('edit stack helpers', () => {
   it('neutralStack is neutral', () => {
     expect(isNeutral(neutralStack().adjustments)).toBe(true);

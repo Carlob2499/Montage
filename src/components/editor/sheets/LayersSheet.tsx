@@ -33,7 +33,9 @@ export default function LayersSheet({ onClose }: { onClose: () => void }) {
             max={1}
             step={0.05}
             value={selected.opacity}
-            onChange={(v) => store.updateLayers([selected.id], (l) => ({ ...l, opacity: v }))}
+            onChange={(v) =>
+              store.updateLayers([selected.id], (l) => ({ ...l, opacity: v }), { transient: true })
+            }
           />
           {selected.type === 'photo' && (
             <PhotoControls layer={selected as PhotoLayer} />
@@ -69,7 +71,7 @@ export default function LayersSheet({ onClose }: { onClose: () => void }) {
 function PhotoControls({ layer }: { layer: PhotoLayer }) {
   const store = useProjectStore.getState();
   const patch = (p: Partial<PhotoLayer>) =>
-    store.updateLayers([layer.id], (l) => ({ ...(l as PhotoLayer), ...p }));
+    store.updateLayers([layer.id], (l) => ({ ...(l as PhotoLayer), ...p }), { transient: true });
   return (
     <>
       <Slider
@@ -114,7 +116,9 @@ function PhotoControls({ layer }: { layer: PhotoLayer }) {
           type="checkbox"
           className="h-5 w-5 accent-blue-500"
           checked={!!layer.isSubject}
-          onChange={(e) => patch({ isSubject: e.target.checked })}
+          onChange={(e) =>
+            store.updateLayers([layer.id], (l) => ({ ...l, isSubject: e.target.checked }))
+          }
         />
       </label>
       <button

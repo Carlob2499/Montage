@@ -14,20 +14,33 @@ interface ProjectState {
   past: ProjectDoc[];
   future: ProjectDoc[];
   dirty: boolean;
+  /** doc as it was before the current preview() run started (null = no preview active) */
+  previewBase: ProjectDoc | null;
 
   newProject: (name: string, mode: ProjectMode, aspect: PanelAspect, panelCount: number) => ProjectDoc;
   loadProject: (doc: ProjectDoc) => void;
   closeProject: () => void;
 
-  /** Replace the doc, pushing the previous state onto the undo stack. */
-  commit: (updater: (doc: ProjectDoc) => ProjectDoc, options?: { transient?: boolean }) => void;
-  /** Mutate without a history entry (drag previews); commit later. */
+  /** Replace the doc, pushing the pre-edit state onto the undo stack. */
+  commit: (updater: (doc: ProjectDoc) => ProjectDoc) => void;
+  /**
+   * Mutate without a history entry (slider drags, typing). The first preview
+   * after a commit snapshots the base doc; a later commit()/commitPreview()
+   * pushes that base — not the previewed doc — so the whole gesture undoes
+   * as one step.
+   */
   preview: (updater: (doc: ProjectDoc) => ProjectDoc) => void;
+  /** Finish a preview gesture: one history entry for the whole gesture. */
+  commitPreview: () => void;
   undo: () => void;
   redo: () => void;
 
   select: (ids: string[]) => void;
-  updateLayers: (ids: string[], patch: (layer: Layer) => Layer) => void;
+  updateLayers: (
+    ids: string[],
+    patch: (layer: Layer) => Layer,
+    options?: { transient?: boolean },
+  ) => void;
   addLayer: (layer: Layer) => void;
   removeLayers: (ids: string[]) => void;
   duplicateLayers: (ids: string[]) => void;
@@ -66,39 +79,62 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   past: [],
   future: [],
   dirty: false,
+  previewBase: null,
 
   newProject: (name, mode, aspect, panelCount) => {
     const doc = makeProjectDoc(name, mode, aspect, panelCount);
-    set({ doc, past: [], future: [], selectedIds: [], dirty: true });
+    set({ doc, past: [], future: [], selectedIds: [], dirty: true, previewBase: null });
     void db.projects.put(doc);
     return doc;
   },
 
-  loadProject: (doc) => set({ doc, past: [], future: [], selectedIds: [], dirty: false }),
+  loadProject: (doc) =>
+    set({ doc, past: [], future: [], selectedIds: [], dirty: false, previewBase: null }),
 
-  closeProject: () => set({ doc: null, past: [], future: [], selectedIds: [], dirty: false }),
+  closeProject: () =>
+    set({ doc: null, past: [], future: [], selectedIds: [], dirty: false, previewBase: null }),
 
   commit: (updater) => {
-    const { doc, past } = get();
+    const { doc, past, previewBase } = get();
     if (!doc) return;
+    const base = previewBase ?? doc;
     const next = { ...updater(doc), updatedAt: Date.now() };
     set({
       doc: next,
-      past: [...past.slice(-(HISTORY_LIMIT - 1)), doc],
+      past: [...past.slice(-(HISTORY_LIMIT - 1)), base],
       future: [],
       dirty: true,
+      previewBase: null,
     });
   },
 
   preview: (updater) => {
-    const { doc } = get();
+    const { doc, previewBase } = get();
     if (!doc) return;
-    set({ doc: updater(doc), dirty: true });
+    set({ doc: updater(doc), dirty: true, previewBase: previewBase ?? doc });
+  },
+
+  commitPreview: () => {
+    const { doc, past, previewBase } = get();
+    if (!doc || !previewBase) return; // nothing previewed — no history noise
+    set({
+      doc: { ...doc, updatedAt: Date.now() },
+      past: [...past.slice(-(HISTORY_LIMIT - 1)), previewBase],
+      future: [],
+      dirty: true,
+      previewBase: null,
+    });
   },
 
   undo: () => {
-    const { doc, past, future } = get();
-    if (!doc || past.length === 0) return;
+    const { doc, past, future, previewBase } = get();
+    if (!doc) return;
+    // an uncommitted preview undoes back to its base first
+    if (previewBase) {
+      set({ doc: previewBase, previewBase: null, dirty: true });
+      return;
+    }
+    if (past.length === 0) return;
     const prev = past[past.length - 1];
     set({
       doc: prev,
@@ -118,16 +154,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       past: [...past.slice(-(HISTORY_LIMIT - 1)), doc],
       future: future.slice(1),
       dirty: true,
+      previewBase: null,
     });
   },
 
   select: (ids) => set({ selectedIds: ids }),
 
-  updateLayers: (ids, patch) => {
-    get().commit((doc) => ({
+  updateLayers: (ids, patch, options) => {
+    const apply = (doc: ProjectDoc): ProjectDoc => ({
       ...doc,
       layers: doc.layers.map((l) => (ids.includes(l.id) ? patch(l) : l)),
-    }));
+    });
+    if (options?.transient) get().preview(apply);
+    else get().commit(apply);
   },
 
   addLayer: (layer) => {
@@ -178,7 +217,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { doc, dirty } = get();
     if (!doc || !dirty) return;
     await db.projects.put({ ...doc, updatedAt: Date.now() });
-    set({ dirty: false });
+    // only clear the flag if nothing changed while the write was in flight
+    if (get().doc === doc) set({ dirty: false });
   },
 
   markSaved: () => set({ dirty: false }),

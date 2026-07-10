@@ -1,12 +1,14 @@
-import { useRef } from 'react';
-import { Image as KonvaImage } from 'react-konva';
+import { memo, useRef } from 'react';
+import { Image as KonvaImage, Rect } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useProjectStore } from '../../../state/projectStore';
 import { useBlobImage } from '../../../hooks/useBlobUrl';
 import type { Layer, StickerLayer } from '../../../types';
 
-export default function StickerNode({
+export default memo(StickerNode);
+
+function StickerNode({
   layer,
   onDragMove,
   onDragEnd,
@@ -41,7 +43,25 @@ export default function StickerNode({
     }));
   };
 
-  if (!img) return null;
+  if (!img) {
+    // keep a node with the layer's id mounted while the blob loads —
+    // otherwise the Transformer attach effect finds nothing and a freshly
+    // added sticker shows no handles until reselected
+    return (
+      <Rect
+        id={`node-${layer.id}`}
+        x={layer.x}
+        y={layer.y}
+        width={layer.width}
+        height={layer.height}
+        rotation={layer.rotation}
+        fill="rgba(127,127,127,0.15)"
+        draggable={!layer.locked}
+        onDragMove={(e) => onDragMove(e, layer)}
+        onDragEnd={(e) => onDragEnd(e, layer)}
+      />
+    );
+  }
   return (
     <KonvaImage
       ref={ref}

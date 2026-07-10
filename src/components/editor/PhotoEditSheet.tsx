@@ -45,25 +45,54 @@ export default function PhotoEditSheet({
   const toast = useUIStore((s) => s.toast);
   const copiedStackPhotoId = useUIStore((s) => s.copiedStackPhotoId);
   const record = useLiveQuery(() => db.photos.get(photoId), [photoId]);
-  const saved = useLiveQuery(() => db.edits.get(photoId), [photoId]);
-  const [stack, setStack] = useState<EditStack>(neutralStack());
+  // The result is tagged with the photoId it was queried for: useLiveQuery can
+  // briefly return the PREVIOUS photo's value after a dep change, and it returns
+  // undefined both while loading and when no row exists.
+  const saved = useLiveQuery(
+    async () => ({ id: photoId, row: (await db.edits.get(photoId)) ?? null }),
+    [photoId],
+  );
+  // null until the saved stack has loaded — controls are disabled meanwhile so a
+  // fast tap can't overwrite existing edits with a neutral stack
+  const [stack, setStack] = useState<EditStack | null>(null);
   const [tab, setTab] = useState<'adjust' | 'presets' | 'crop'>('presets');
-  const loaded = useRef(false);
+  const loadedFor = useRef<string | null>(null);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (saved !== undefined && !loaded.current) {
-      loaded.current = true;
-      if (saved) setStack(structuredClone(saved.stack));
+    // reset when the sheet is reused for a different photo
+    if (loadedFor.current !== photoId) {
+      loadedFor.current = null;
+      setStack(null);
     }
-  }, [saved]);
+    if (saved?.id === photoId && loadedFor.current !== photoId) {
+      loadedFor.current = photoId;
+      setStack(saved.row ? structuredClone(saved.row.stack) : neutralStack());
+    }
+  }, [saved, photoId]);
+
+  // flush any pending debounced write when leaving/switching photos
+  useEffect(() => {
+    return () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    };
+  }, [photoId]);
 
   const persist = (next: EditStack) => {
     setStack(next);
-    void db.edits.put({ photoId, stack: structuredClone(next) });
+    // debounce the IndexedDB write so slider scrubs don't re-cache the canvas
+    // filter (and hit the DB) on every tick
+    const id = photoId;
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      void db.edits.put({ photoId: id, stack: structuredClone(next) });
+    }, 150);
   };
 
-  const patchAdj = (key: keyof Adjustments, value: number) =>
+  const patchAdj = (key: keyof Adjustments, value: number) => {
+    if (!stack) return;
     persist({ ...stack, presetId: undefined, adjustments: { ...stack.adjustments, [key]: value } });
+  };
 
   const copy = () => {
     useUIStore.getState().setCopiedStack(photoId);
@@ -71,7 +100,7 @@ export default function PhotoEditSheet({
   };
 
   const paste = async () => {
-    if (!copiedStackPhotoId) return;
+    if (!copiedStackPhotoId || !stack) return;
     const src = await db.edits.get(copiedStackPhotoId);
     if (!src) return toast('Nothing to paste', 'error');
     persist({ ...copyStackForPaste(src.stack), crop: stack.crop });
@@ -79,7 +108,7 @@ export default function PhotoEditSheet({
   };
 
   const pasteToAlbum = async () => {
-    if (!record) return;
+    if (!record || !stack) return;
     const albumPhotos = await db.photos.where('albumId').equals(record.albumId).toArray();
     const others = albumPhotos.filter((p) => p.id !== photoId && p.kind === 'image');
     if (!others.length) return;
@@ -101,6 +130,14 @@ export default function PhotoEditSheet({
           Video clips can be placed in cells (shown as a poster frame). Adjustments and MP4 panel
           export are coming in a later version — the image pipeline ships first.
         </p>
+      </Sheet>
+    );
+  }
+
+  if (!stack) {
+    return (
+      <Sheet title={record?.fileName ?? 'Edit photo'} onClose={onClose} tall>
+        <p className="py-8 text-center text-sm text-ink-400">Loading edits…</p>
       </Sheet>
     );
   }
@@ -307,15 +344,22 @@ function CropControls({
       onChange(crop ? { ...current, x: 0, y: 0, width: 1, height: 1 } : undefined);
       return;
     }
-    // largest centered crop with the requested output ratio
-    const effectiveImageRatio =
-      current.rotate === 90 || current.rotate === 270 ? 1 / imageRatio : imageRatio;
+    // Largest centered crop whose OUTPUT (after rotation) has the requested
+    // ratio. crop.width/height live in unrotated source space, so for 90/270
+    // the source height maps to output width: outRatio = (h·ih)/(w·iw).
+    const rotated = current.rotate === 90 || current.rotate === 270;
     let w = 1;
     let h = 1;
-    if (effectiveImageRatio > ratio) {
-      w = ratio / effectiveImageRatio;
+    if (rotated) {
+      // want h/w = ratio · imageRatio (imageRatio = iw/ih)
+      const k = ratio * imageRatio;
+      if (k <= 1) h = k;
+      else w = 1 / k;
     } else {
-      h = effectiveImageRatio / ratio;
+      // want w/h = ratio / imageRatio
+      const k = ratio / imageRatio;
+      if (k <= 1) w = k;
+      else h = 1 / k;
     }
     onChange({ ...current, x: (1 - w) / 2, y: (1 - h) / 2, width: w, height: h });
   };

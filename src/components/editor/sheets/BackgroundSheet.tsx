@@ -20,6 +20,9 @@ export default function BackgroundSheet({ onClose }: { onClose: () => void }) {
   if (!bg) return null;
 
   const set = (b: Background) => setBackground(b);
+  // slider/color-picker drags preview per tick, landing as one undo entry
+  const setT = (b: Background) =>
+    useProjectStore.getState().preview((d) => ({ ...d, background: b }));
 
   return (
     <Sheet title="Backdrop" onClose={onClose}>
@@ -41,7 +44,8 @@ export default function BackgroundSheet({ onClose }: { onClose: () => void }) {
               type="color"
               className="h-10 w-12 cursor-pointer rounded-xl border-0 bg-transparent p-0"
               value={bg.kind === 'solid' ? bg.color : '#ffffff'}
-              onChange={(e) => set({ kind: 'solid', color: e.target.value })}
+              onChange={(e) => setT({ kind: 'solid', color: e.target.value })}
+              onBlur={() => useProjectStore.getState().commitPreview()}
             />
           </div>
         </section>
@@ -68,15 +72,25 @@ export default function BackgroundSheet({ onClose }: { onClose: () => void }) {
           </div>
           {bg.kind === 'linear' && (
             <div className="mt-3 space-y-3">
-              <Slider label="Angle" min={0} max={360} value={bg.angle} onChange={(v) => set({ ...bg, angle: v })} />
+              <Slider label="Angle" min={0} max={360} value={bg.angle} onChange={(v) => setT({ ...bg, angle: v })} />
               <div className="flex gap-3">
                 <label className="flex items-center gap-2 text-xs text-ink-500">
                   From
-                  <input type="color" value={bg.from} onChange={(e) => set({ ...bg, from: e.target.value })} />
+                  <input
+                    type="color"
+                    value={bg.from}
+                    onChange={(e) => setT({ ...bg, from: e.target.value })}
+                    onBlur={() => useProjectStore.getState().commitPreview()}
+                  />
                 </label>
                 <label className="flex items-center gap-2 text-xs text-ink-500">
                   To
-                  <input type="color" value={bg.to} onChange={(e) => set({ ...bg, to: e.target.value })} />
+                  <input
+                    type="color"
+                    value={bg.to}
+                    onChange={(e) => setT({ ...bg, to: e.target.value })}
+                    onBlur={() => useProjectStore.getState().commitPreview()}
+                  />
                 </label>
               </div>
             </div>
@@ -96,14 +110,14 @@ export default function BackgroundSheet({ onClose }: { onClose: () => void }) {
           </button>
           {bg.kind === 'blurPhoto' && (
             <div className="mt-3 space-y-3">
-              <Slider label="Blur" min={0} max={100} value={bg.blur} onChange={(v) => set({ ...bg, blur: v })} />
+              <Slider label="Blur" min={0} max={100} value={bg.blur} onChange={(v) => setT({ ...bg, blur: v })} />
               <Slider
                 label="Darken"
                 min={0}
                 max={0.8}
                 step={0.05}
                 value={bg.dim}
-                onChange={(v) => set({ ...bg, dim: v })}
+                onChange={(v) => setT({ ...bg, dim: v })}
               />
             </div>
           )}

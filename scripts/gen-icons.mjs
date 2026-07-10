@@ -101,6 +101,7 @@ function drawIcon(size) {
   return png(size, size, px);
 }
 
+writeFileSync(join(outDir, 'icon-180.png'), drawIcon(180)); // apple-touch-icon
 writeFileSync(join(outDir, 'icon-192.png'), drawIcon(192));
 writeFileSync(join(outDir, 'icon-512.png'), drawIcon(512));
 

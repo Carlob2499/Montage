@@ -14,22 +14,34 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
   const store = useProjectStore.getState();
 
   const setCount = (count: number) => {
-    store.commit((d) => ({
+    // transient while scrubbing (one undo entry per gesture via Slider), and
+    // NEVER truncate captions on shrink — the tail is kept so scrubbing
+    // down and back up doesn't destroy caption text. Export slices to count.
+    store.preview((d) => ({
       ...d,
       panelCount: count,
       captions: isGrid
         ? d.captions
-        : Array.from({ length: count }, (_, i) => d.captions[i] ?? ''),
+        : count <= d.captions.length
+          ? d.captions
+          : [...d.captions, ...Array.from({ length: count - d.captions.length }, () => '')],
     }));
   };
 
   const movePanel = (from: number, to: number) => {
     if (to < 0 || to >= doc.panelCount || from === to) return;
     const boxes = doc.layers.map((l) => ({ id: l.id, bbox: layerBBox(l) }));
-    const { offsets, captions } = reorderPanels(boxes, doc.captions, doc.panelCount, from, to);
+    const { offsets, captions } = reorderPanels(
+      boxes,
+      doc.captions.slice(0, doc.panelCount),
+      doc.panelCount,
+      from,
+      to,
+    );
     store.commit((d) => ({
       ...d,
-      captions,
+      // keep any hidden caption tail preserved by the count slider
+      captions: [...captions, ...d.captions.slice(d.panelCount)],
       layers: d.layers.map((l) =>
         offsets.has(l.id) ? { ...l, x: l.x + offsets.get(l.id)! } : l,
       ),
@@ -133,14 +145,14 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
           min={0}
           max={160}
           value={doc.margin}
-          onChange={(v) => store.commit((d) => ({ ...d, margin: v }))}
+          onChange={(v) => store.preview((d) => ({ ...d, margin: v }))}
         />
         <Slider
           label="Default gutter"
           min={0}
           max={120}
           value={doc.gutter}
-          onChange={(v) => store.commit((d) => ({ ...d, gutter: v }))}
+          onChange={(v) => store.preview((d) => ({ ...d, gutter: v }))}
         />
         <p className="text-xs text-ink-400">
           Blue dashed lines are slice boundaries. Content crossing them flows seamlessly across

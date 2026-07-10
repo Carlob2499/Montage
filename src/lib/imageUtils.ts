@@ -47,11 +47,16 @@ export async function decodeImage(blob: Blob): Promise<ImageBitmap> {
   return createImageBitmap(blob, { imageOrientation: 'from-image' });
 }
 
-/** Downscale to fit within `max` px on the long edge; returns a JPEG blob. */
-export async function makeScaledJpeg(
+/**
+ * Downscale to fit within `max` px on the long edge. Alpha-capable sources
+ * (PNG/WebP) are re-encoded as PNG so transparency survives — JPEG encoding a
+ * transparent canvas turns those pixels black.
+ */
+export async function makeScaledImage(
   bitmap: ImageBitmap,
   max: number,
   quality = 0.85,
+  preserveAlpha = false,
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
@@ -60,9 +65,14 @@ export async function makeScaledJpeg(
   const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, w, h);
-  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+  const blob = preserveAlpha
+    ? await canvas.convertToBlob({ type: 'image/png' })
+    : await canvas.convertToBlob({ type: 'image/jpeg', quality });
   return { blob, width: w, height: h };
 }
+
+/** @deprecated kept as an alias — see makeScaledImage */
+export const makeScaledJpeg = makeScaledImage;
 
 /**
  * Cover-fit math: how to draw an image of (iw, ih) inside a frame (fw, fh)
@@ -90,7 +100,10 @@ export function coverCrop(
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  // pick the unit AFTER rounding so 1048575 B reads "1.0 MB", not "1024.0 KB"
+  const kb = bytes / 1024;
+  if (Number(kb.toFixed(1)) < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  if (Number(mb.toFixed(1)) < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
 }

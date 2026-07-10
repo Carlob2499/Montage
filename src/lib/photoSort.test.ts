@@ -129,6 +129,12 @@ describe('findDuplicates', () => {
     expect(map.has('orig')).toBe(false);
   });
 
+  it('never flags photos without EXIF capture time (screenshots/scans collide too easily)', () => {
+    const a = photo({ id: 'a', width: 1170, height: 2532, byteSize: 555, dateTaken: undefined });
+    const b = photo({ id: 'b', width: 1170, height: 2532, byteSize: 555, dateTaken: undefined });
+    expect(findDuplicates([a, b]).size).toBe(0);
+  });
+
   it('does not flag photos differing in any component', () => {
     const a = photo({ id: 'a', width: 100, height: 50, byteSize: 555, dateTaken: 42 });
     const b = photo({ id: 'b', width: 100, height: 50, byteSize: 556, dateTaken: 42 });

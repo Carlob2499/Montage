@@ -9,7 +9,7 @@ import type { PhotoRecord } from '../types';
 import {
   decodeImage,
   isHeic,
-  makeScaledJpeg,
+  makeScaledImage,
   normalizeImageBlob,
   PROXY_SIZE,
   THUMB_SIZE,
@@ -58,30 +58,73 @@ async function extractExif(file: File): Promise<{
 
 async function videoPoster(file: File): Promise<{
   thumb: Blob;
+  poster: Blob;
   width: number;
   height: number;
 }> {
   const url = URL.createObjectURL(file);
+  const video = document.createElement('video');
   try {
-    const video = document.createElement('video');
     video.muted = true;
-    video.preload = 'metadata';
+    video.playsInline = true;
+    // 'auto' — iOS Safari never reaches HAVE_CURRENT_DATA with preload=metadata
+    video.preload = 'auto';
     video.src = url;
-    await new Promise<void>((resolve, reject) => {
-      video.onloadeddata = () => resolve();
-      video.onerror = () => reject(new Error('Could not decode video'));
-    });
-    video.currentTime = Math.min(0.5, video.duration / 2);
-    await new Promise<void>((resolve) => {
-      video.onseeked = () => resolve();
-    });
+    video.load();
+
+    // every wait is bounded — a video that never produces a frame must fail
+    // the ONE file, not hang the whole import batch
+    const withTimeout = <T,>(p: Promise<T>, ms: number, what: string) =>
+      Promise.race([
+        p,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Video ${what} timed out`)), ms),
+        ),
+      ]);
+
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        video.onloadeddata = () => resolve();
+        video.onerror = () => reject(new Error('Could not decode video'));
+      }),
+      10_000,
+      'decode',
+    );
+
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      video.currentTime = Math.min(0.5, video.duration / 2);
+      await withTimeout(
+        new Promise<void>((resolve, reject) => {
+          video.onseeked = () => resolve();
+          video.onerror = () => reject(new Error('Video seek failed'));
+        }),
+        5_000,
+        'seek',
+      );
+    }
+
+    if (!video.videoWidth || !video.videoHeight) {
+      throw new Error('Video has no visible frames');
+    }
     const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
     canvas.getContext('2d')!.drawImage(video, 0, 0);
     const bmp = await createImageBitmap(canvas);
-    const { blob } = await makeScaledJpeg(bmp, THUMB_SIZE);
+    // full-size poster (stored as the proxy) keeps exports sharp; the thumb
+    // is only for the library grid
+    const [thumb, poster] = await Promise.all([
+      makeScaledImage(bmp, THUMB_SIZE),
+      makeScaledImage(bmp, PROXY_SIZE, 0.9),
+    ]);
     bmp.close();
-    return { thumb: blob, width: video.videoWidth, height: video.videoHeight };
+    return {
+      thumb: thumb.blob,
+      poster: poster.blob,
+      width: video.videoWidth,
+      height: video.videoHeight,
+    };
   } finally {
+    video.removeAttribute('src');
+    video.load();
     URL.revokeObjectURL(url);
   }
 }
@@ -116,14 +159,17 @@ export async function importFiles(files: File[], albumId: string): Promise<Impor
         width = poster.width;
         height = poster.height;
         thumbBlob = poster.thumb;
+        proxyBlob = poster.poster;
       } else {
         storedBlob = await normalizeImageBlob(file);
         const bitmap = await decodeImage(storedBlob);
         width = bitmap.width;
         height = bitmap.height;
+        // PNG/WebP may carry transparency — JPEG proxies would turn it black
+        const hasAlpha = /png|webp/i.test(storedBlob.type || file.type);
         const [thumb, proxy] = await Promise.all([
-          makeScaledJpeg(bitmap, THUMB_SIZE, 0.8),
-          makeScaledJpeg(bitmap, PROXY_SIZE, 0.87),
+          makeScaledImage(bitmap, THUMB_SIZE, 0.8, hasAlpha),
+          makeScaledImage(bitmap, PROXY_SIZE, 0.87, hasAlpha),
         ]);
         thumbBlob = thumb.blob;
         proxyBlob = proxy.blob;

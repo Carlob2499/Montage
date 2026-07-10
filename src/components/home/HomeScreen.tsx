@@ -4,6 +4,7 @@ import { db, uid } from '../../db/db';
 import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
 import { downloadBlob, slug } from '../../lib/exporter';
+import { normalizeProjectDoc } from '../../lib/projectSchema';
 import type { PanelAspect, ProjectDoc, ProjectMode } from '../../types';
 
 export default function HomeScreen() {
@@ -42,10 +43,7 @@ export default function HomeScreen() {
 
   const importJson = async (file: File) => {
     try {
-      const doc = JSON.parse(await file.text()) as ProjectDoc;
-      if (!doc.id || !Array.isArray(doc.layers) || !doc.panelCount) {
-        throw new Error('Not a Montage project file');
-      }
+      const doc = normalizeProjectDoc(JSON.parse(await file.text()));
       doc.id = uid(); // avoid clobbering an existing project
       doc.updatedAt = Date.now();
       await db.projects.put(doc);

@@ -26,9 +26,59 @@ export interface ExportedFile {
 }
 
 /**
+ * The decode scale a photo actually needs for a 1:1 export: the largest
+ * cover-fit scale across every layer using it (accounting for the stack crop
+ * and in-frame zoom). Decoding beyond this adds memory without adding pixels
+ * to the output.
+ */
+function neededDecodeScale(
+  doc: ProjectDoc,
+  photoId: string,
+  srcW: number,
+  srcH: number,
+  stack?: import('../types').EditStack,
+): number {
+  let effW = srcW;
+  let effH = srcH;
+  const crop = stack?.crop;
+  if (crop) {
+    effW = Math.max(1, crop.width * srcW);
+    effH = Math.max(1, crop.height * srcH);
+    if (crop.rotate === 90 || crop.rotate === 270) [effW, effH] = [effH, effW];
+  }
+  let scale = 0;
+  for (const layer of doc.layers) {
+    if (layer.type !== 'photo' || layer.photoId !== photoId) continue;
+    const cover = Math.max(layer.width / effW, layer.height / effH) * Math.max(1, layer.imgScale);
+    scale = Math.max(scale, cover);
+  }
+  if (doc.background.kind === 'blurPhoto' && doc.background.photoId === photoId) {
+    // backdrop renders at ≤1600px — tiny requirement
+    scale = Math.max(scale, 1600 / Math.max(srcW, srcH));
+  }
+  // 1.25 headroom for resampling quality; cap at 1 (never upscale the decode)
+  return Math.min(1, scale * 1.25);
+}
+
+async function decodeScaled(blob: Blob, targetW: number, srcW: number): Promise<ImageBitmap> {
+  if (targetW >= srcW || targetW <= 0) return decodeImage(blob);
+  try {
+    return await createImageBitmap(blob, {
+      imageOrientation: 'from-image',
+      resizeWidth: Math.round(targetW),
+      resizeQuality: 'high',
+    });
+  } catch {
+    // resize options unsupported — fall back to a full decode
+    return decodeImage(blob);
+  }
+}
+
+/**
  * Load bitmaps + edit stacks for every photo a doc uses. Pass
  * `useProxies` for fast screen-resolution rendering (swipe preview);
- * exports always use originals.
+ * exports use originals, downscaled at decode to what the layout needs.
+ * On failure, everything already decoded is released before rethrowing.
  */
 export async function loadResources(
   doc: ProjectDoc,
@@ -43,26 +93,40 @@ export async function loadResources(
   if (doc.background.kind === 'blurPhoto') photoIds.add(doc.background.photoId);
 
   const photos = new Map<string, { bitmap: ImageBitmap; stack?: import('../types').EditStack }>();
-  for (const id of photoIds) {
-    const record = await db.photos.get(id);
-    // video cells render their poster frame (stored as the thumb)
-    const row =
-      record?.kind === 'video'
-        ? await db.thumbs.get(id)
-        : ((useProxies ? await db.proxies.get(id) : null) ?? (await db.originals.get(id)));
-    if (!row) continue;
-    const bitmap = await decodeImage(row.blob);
-    const edit = await db.edits.get(id);
-    photos.set(id, { bitmap, stack: edit?.stack });
-  }
-
   const stickers = new Map<string, ImageBitmap>();
-  for (const id of stickerIds) {
-    const row = await db.stickers.get(id);
-    if (row) stickers.set(id, await decodeImage(row.blob));
+  const resources: RenderResources = { photos, stickers };
+
+  try {
+    for (const id of photoIds) {
+      const record = await db.photos.get(id);
+      // video cells render their poster frame (full-size poster lives in
+      // proxies; thumbs is the fallback for pre-existing imports)
+      const row =
+        record?.kind === 'video'
+          ? ((await db.proxies.get(id)) ?? (await db.thumbs.get(id)))
+          : ((useProxies ? await db.proxies.get(id) : null) ?? (await db.originals.get(id)));
+      if (!row) continue;
+      const edit = await db.edits.get(id);
+      let bitmap: ImageBitmap;
+      if (!useProxies && record && record.kind === 'image') {
+        const scale = neededDecodeScale(doc, id, record.width, record.height, edit?.stack);
+        bitmap = await decodeScaled(row.blob, record.width * scale, record.width);
+      } else {
+        bitmap = await decodeImage(row.blob);
+      }
+      photos.set(id, { bitmap, stack: edit?.stack });
+    }
+
+    for (const id of stickerIds) {
+      const row = await db.stickers.get(id);
+      if (row) stickers.set(id, await decodeImage(row.blob));
+    }
+  } catch (err) {
+    releaseResources(resources);
+    throw err;
   }
 
-  return { photos, stickers };
+  return resources;
 }
 
 export function releaseResources(res: RenderResources): void {
@@ -128,17 +192,28 @@ export async function exportGridTiles(
   }
 }
 
-/** Export the whole canvas as one full-resolution panorama image. */
+/**
+ * Safe single-canvas pixel budget. iOS Safari caps canvas area around
+ * 16.7 megapixels — exceeding it yields a silently blank canvas.
+ */
+const MAX_CANVAS_AREA = 16_000_000;
+
+/**
+ * Export the whole canvas as one panorama image, downscaled if the full
+ * resolution would exceed mobile canvas limits. Returns the applied scale so
+ * the UI can tell the user.
+ */
 export async function exportPanorama(
   doc: ProjectDoc,
   opts: ExportOptions,
-): Promise<ExportedFile> {
+): Promise<ExportedFile & { scale: number }> {
   const resources = await loadResources(doc);
   try {
     const { width, height } = canvasSize(doc);
-    const canvas = renderRegion(doc, { x: 0, y: 0, width, height }, resources);
+    const scale = Math.min(1, Math.sqrt(MAX_CANVAS_AREA / (width * height)));
+    const canvas = renderRegion(doc, { x: 0, y: 0, width, height }, resources, scale);
     const blob = await encode(canvas, opts);
-    return { name: `${slug(doc.name)}-panorama.${ext(opts)}`, blob };
+    return { name: `${slug(doc.name)}-panorama.${ext(opts)}`, blob, scale };
   } finally {
     releaseResources(resources);
   }
@@ -151,7 +226,9 @@ export async function bundleZip(
 ): Promise<Blob> {
   const zip = new JSZip();
   for (const f of files) zip.file(f.name, f.blob);
+  const count = doc.mode === 'grid' ? 1 : doc.panelCount;
   const captions = doc.captions
+    .slice(0, count)
     .map((c, i) => `--- Panel ${i + 1} ---\n${c || '(no caption)'}`)
     .join('\n\n');
   zip.file(`${slug(doc.name)}-captions.txt`, captions);

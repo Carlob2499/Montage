@@ -103,15 +103,39 @@ export async function deletePhotos(photoIds: string[]): Promise<void> {
       await db.proxies.bulkDelete(photoIds);
       await db.thumbs.bulkDelete(photoIds);
       await db.edits.bulkDelete(photoIds);
+      // clear duplicate flags that pointed at a just-deleted photo, so the
+      // "clean up duplicates" action can never delete a last-remaining copy
+      const deleted = new Set(photoIds);
+      await db.photos
+        .filter((p) => p.duplicateOf !== undefined && deleted.has(p.duplicateOf))
+        .modify({ duplicateOf: undefined });
     },
   );
 }
 
-/** Delete an album and all photos inside it. */
+/** Delete an album and all photos inside it — atomically, so photos imported
+ * concurrently can't be orphaned between the read and the deletes. */
 export async function deleteAlbum(albumId: string): Promise<void> {
-  const photos = await db.photos.where('albumId').equals(albumId).primaryKeys();
-  await deletePhotos(photos as string[]);
-  await db.albums.delete(albumId);
+  await db.transaction(
+    'rw',
+    [db.albums, db.photos, db.originals, db.proxies, db.thumbs, db.edits],
+    async () => {
+      const photoIds = (await db.photos
+        .where('albumId')
+        .equals(albumId)
+        .primaryKeys()) as string[];
+      await db.photos.bulkDelete(photoIds);
+      await db.originals.bulkDelete(photoIds);
+      await db.proxies.bulkDelete(photoIds);
+      await db.thumbs.bulkDelete(photoIds);
+      await db.edits.bulkDelete(photoIds);
+      const deleted = new Set(photoIds);
+      await db.photos
+        .filter((p) => p.duplicateOf !== undefined && deleted.has(p.duplicateOf))
+        .modify({ duplicateOf: undefined });
+      await db.albums.delete(albumId);
+    },
+  );
 }
 
 /** Merge album `fromId` into `intoId` (photos move, source album removed). */

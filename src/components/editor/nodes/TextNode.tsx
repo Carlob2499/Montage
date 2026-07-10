@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import { Text as KonvaText } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -6,7 +6,9 @@ import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
 import type { Layer, TextLayer } from '../../../types';
 
-export default function TextNode({
+export default memo(TextNode);
+
+function TextNode({
   layer,
   onDragMove,
   onDragEnd,
@@ -33,16 +35,24 @@ export default function TextNode({
     if (!node) return;
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
+    // Konva reports the measured auto-width, so a width-less layer can bake a
+    // horizontal stretch into an explicit wrap width instead of snapping back
+    const measuredW = node.width();
     node.scale({ x: 1, y: 1 });
     useProjectStore.getState().updateLayers([layer.id], (l) => {
       const t = l as TextLayer;
+      const horizontalResize = Math.abs(scaleX - 1) > 0.001 && Math.abs(scaleY - 1) < 0.001;
       return {
         ...t,
         x: node.x(),
         y: node.y(),
         rotation: node.rotation(),
         fontSize: Math.max(8, t.fontSize * scaleY),
-        width: t.width ? Math.max(20, t.width * scaleX) : undefined,
+        width: t.width
+          ? Math.max(20, t.width * scaleX)
+          : horizontalResize
+            ? Math.max(20, measuredW * scaleX)
+            : undefined,
       };
     });
   };

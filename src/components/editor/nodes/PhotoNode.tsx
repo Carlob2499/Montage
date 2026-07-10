@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { Group, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -11,7 +11,11 @@ import { coverCrop } from '../../../lib/imageUtils';
 import { applyAdjustments, isNeutral } from '../../../lib/editStack';
 import type { Layer, PhotoLayer } from '../../../types';
 
-export default function PhotoNode({
+// memoized: during a drag only the dragged layer's object identity changes,
+// so the other 20+ nodes skip reconciliation entirely
+export default memo(PhotoNode);
+
+function PhotoNode({
   layer,
   onDragMove,
   onDragEnd,
@@ -31,7 +35,8 @@ export default function PhotoNode({
     [layer.photoId],
   );
   const isVideo = record?.kind === 'video';
-  const img = useBlobImage(isVideo ? 'thumbs' : 'proxies', layer.photoId || null);
+  // videos store their full-size poster frame as the proxy
+  const img = useBlobImage('proxies', layer.photoId || null);
 
   // pre-apply the stack crop (crop rect + rotate/flip) to an offscreen canvas
   const source = useMemo(() => {

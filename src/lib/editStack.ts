@@ -97,6 +97,19 @@ export function adjustPixel(
 }
 
 /**
+ * When the buffer is a sub-rect of a larger photo frame (partial rendering),
+ * the spatial effects need the frame geometry: vignette must stay centered on
+ * the FRAME, not the sub-rect, so slices of one photo remain seam-continuous.
+ */
+export interface FrameContext {
+  /** buffer's origin within the frame */
+  offsetX: number;
+  offsetY: number;
+  frameWidth: number;
+  frameHeight: number;
+}
+
+/**
  * Apply the full adjustment set to an RGBA buffer in place.
  * `width`/`height` are needed for the spatial effects (sharpness, vignette).
  */
@@ -105,6 +118,7 @@ export function applyAdjustments(
   width: number,
   height: number,
   adj: Adjustments,
+  frame?: FrameContext,
 ): void {
   if (isNeutral(adj)) return;
 
@@ -128,7 +142,15 @@ export function applyAdjustments(
   }
 
   if (adj.sharpness > 0) sharpen(data, width, height, adj.sharpness / 100);
-  if (adj.vignette > 0) vignette(data, width, height, adj.vignette / 100);
+  if (adj.vignette > 0) {
+    vignette(
+      data,
+      width,
+      height,
+      adj.vignette / 100,
+      frame ?? { offsetX: 0, offsetY: 0, frameWidth: width, frameHeight: height },
+    );
+  }
 }
 
 /** Unsharp-mask style 3×3 sharpen, amount 0..1. */
@@ -157,20 +179,21 @@ function sharpen(
   }
 }
 
-/** Radial darkening toward the corners, amount 0..1. */
+/** Radial darkening toward the frame corners, amount 0..1. */
 function vignette(
   data: Uint8ClampedArray,
   width: number,
   height: number,
   amount: number,
+  frame: FrameContext,
 ): void {
-  const cx = width / 2;
-  const cy = height / 2;
+  const cx = frame.frameWidth / 2;
+  const cy = frame.frameHeight / 2;
   const maxD = Math.sqrt(cx * cx + cy * cy);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
+      const dx = x + frame.offsetX - cx;
+      const dy = y + frame.offsetY - cy;
       const d = Math.sqrt(dx * dx + dy * dy) / maxD;
       // no effect in the center ~40%, ease toward corners
       const t = Math.max(0, (d - 0.4) / 0.6);

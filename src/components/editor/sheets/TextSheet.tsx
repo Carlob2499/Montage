@@ -24,6 +24,11 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
 
   const patch = (p: Partial<TextLayer>) =>
     useProjectStore.getState().updateLayers([layer.id], (l) => ({ ...(l as TextLayer), ...p }));
+  // sliders and typing preview per tick, then land as one undo entry
+  const patchT = (p: Partial<TextLayer>) =>
+    useProjectStore
+      .getState()
+      .updateLayers([layer.id], (l) => ({ ...(l as TextLayer), ...p }), { transient: true });
 
   return (
     <Sheet title="Text" onClose={onClose}>
@@ -31,7 +36,8 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
         <textarea
           className="input-base min-h-20 font-medium"
           value={layer.text}
-          onChange={(e) => patch({ text: e.target.value })}
+          onChange={(e) => patchT({ text: e.target.value })}
+          onBlur={() => useProjectStore.getState().commitPreview()}
         />
         <div className="grid grid-cols-2 gap-2">
           <select
@@ -57,13 +63,13 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
             ))}
           </select>
         </div>
-        <Slider label="Size" min={12} max={400} value={layer.fontSize} onChange={(v) => patch({ fontSize: v })} />
+        <Slider label="Size" min={12} max={400} value={layer.fontSize} onChange={(v) => patchT({ fontSize: v })} />
         <Slider
           label="Letter spacing"
           min={-5}
           max={40}
           value={layer.letterSpacing}
-          onChange={(v) => patch({ letterSpacing: v })}
+          onChange={(v) => patchT({ letterSpacing: v })}
         />
         <Slider
           label="Line height"
@@ -71,7 +77,7 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
           max={2.2}
           step={0.05}
           value={layer.lineHeight}
-          onChange={(v) => patch({ lineHeight: v })}
+          onChange={(v) => patchT({ lineHeight: v })}
         />
         <div className="flex items-center gap-2">
           <span className="w-20 text-xs text-ink-500">Align</span>
@@ -106,7 +112,8 @@ export default function TextSheet({ onClose }: { onClose: () => void }) {
               type="color"
               value={layer.fill}
               className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0"
-              onChange={(e) => patch({ fill: e.target.value })}
+              onChange={(e) => patchT({ fill: e.target.value })}
+              onBlur={() => useProjectStore.getState().commitPreview()}
             />
           </div>
         </div>
@@ -132,6 +139,13 @@ export function Slider({
   onChange: (v: number) => void;
   onCommit?: () => void;
 }) {
+  // Sliders update via preview() per tick; the whole drag lands as ONE undo
+  // entry when the pointer lifts. commitPreview() is a no-op when the slider
+  // didn't touch the project store (e.g. export quality).
+  const finish = () => {
+    useProjectStore.getState().commitPreview();
+    onCommit?.();
+  };
   return (
     <label className="block">
       <span className="mb-1 flex justify-between text-xs text-ink-500">
@@ -147,7 +161,9 @@ export function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        onPointerUp={onCommit}
+        onPointerUp={finish}
+        onKeyUp={finish}
+        onBlur={finish}
       />
     </label>
   );

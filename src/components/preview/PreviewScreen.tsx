@@ -32,8 +32,11 @@ export default function PreviewScreen() {
               ? renderGridTile(doc, Math.floor(i / 3), i % 3, resources)
               : renderPanel(doc, i, resources);
           const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+          // re-check AFTER the await: unmount cleanup already revoked made[],
+          // so a URL created now would leak for the page lifetime
+          if (cancelled) break;
           made.push(URL.createObjectURL(blob));
-          if (!cancelled) setUrls([...made]);
+          setUrls([...made]);
         }
       } finally {
         releaseResources(resources);

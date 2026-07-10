@@ -122,7 +122,11 @@ export default function EditorScreen() {
       {sheet === 'stickers' && <StickersSheet onClose={closeSheet} />}
       {sheet === 'export' && <ExportSheet onClose={closeSheet} />}
       {sheet === 'photoEdit' && selectedPhotoLayer?.type === 'photo' && (
-        <PhotoEditSheet photoId={selectedPhotoLayer.photoId} onClose={closeSheet} />
+        <PhotoEditSheet
+          key={selectedPhotoLayer.photoId}
+          photoId={selectedPhotoLayer.photoId}
+          onClose={closeSheet}
+        />
       )}
     </div>
   );
@@ -241,7 +245,14 @@ function useKeyboardShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
       const store = useProjectStore.getState();
       const meta = e.metaKey || e.ctrlKey;
 
@@ -251,6 +262,12 @@ function useKeyboardShortcuts() {
         else store.undo();
         return;
       }
+
+      // destructive/nudge shortcuts only act on the bare canvas — with a
+      // sheet open, Backspace after tapping one of its buttons must not
+      // delete the layer being edited underneath
+      if (useUIStore.getState().sheet !== 'none') return;
+
       if (meta && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         if (store.selectedIds.length) store.duplicateLayers(store.selectedIds);

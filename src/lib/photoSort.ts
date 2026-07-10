@@ -47,13 +47,16 @@ export function searchPhotos(photos: PhotoRecord[], query: string): PhotoRecord[
 
 /**
  * Basic duplicate detection: identical pixel dimensions + byte size +
- * capture time (when both have one). Returns a map of duplicate photo id →
- * the id of the photo it duplicates (the earliest-added copy wins).
+ * capture time. Photos without EXIF capture time are never flagged — two
+ * different no-EXIF files (screenshots, scans) can easily collide on
+ * dimensions + size alone. Returns a map of duplicate photo id → the id of
+ * the photo it duplicates (the earliest-added copy wins).
  */
 export function findDuplicates(photos: PhotoRecord[]): Map<string, string> {
   const groups = new Map<string, PhotoRecord[]>();
   for (const p of photos) {
-    const key = `${p.width}x${p.height}:${p.byteSize}:${p.dateTaken ?? 'none'}`;
+    if (p.dateTaken === undefined) continue;
+    const key = `${p.width}x${p.height}:${p.byteSize}:${p.dateTaken}`;
     const g = groups.get(key);
     if (g) g.push(p);
     else groups.set(key, [p]);

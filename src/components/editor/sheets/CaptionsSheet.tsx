@@ -12,7 +12,7 @@ export default function CaptionsSheet({ onClose }: { onClose: () => void }) {
         Saved with the project and exported as a text file next to your panels.
       </p>
       <div className="space-y-3">
-        {doc.captions.map((c, i) => (
+        {doc.captions.slice(0, doc.mode === 'grid' ? 1 : doc.panelCount).map((c, i) => (
           <label key={i} className="block">
             <span className="mb-1 block text-xs font-medium text-ink-500">Panel {i + 1}</span>
             <textarea
@@ -25,7 +25,7 @@ export default function CaptionsSheet({ onClose }: { onClose: () => void }) {
                   captions: d.captions.map((cc, ii) => (ii === i ? e.target.value : cc)),
                 }))
               }
-              onBlur={() => store.commit((d) => d)}
+              onBlur={() => store.commitPreview()}
             />
           </label>
         ))}

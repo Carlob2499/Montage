@@ -296,7 +296,9 @@ export default function LibraryScreen() {
         )}
       </div>
 
-      {editPhotoId && <PhotoEditSheet photoId={editPhotoId} onClose={() => setEditPhotoId(null)} />}
+      {editPhotoId && (
+        <PhotoEditSheet key={editPhotoId} photoId={editPhotoId} onClose={() => setEditPhotoId(null)} />
+      )}
       {showStorage && <StorageSheet onClose={() => setShowStorage(false)} />}
     </div>
   );
@@ -425,6 +427,10 @@ function StorageSheet({ onClose }: { onClose: () => void }) {
               if (
                 confirm('Delete EVERYTHING — all albums, photos, projects and stickers? This cannot be undone.')
               ) {
+                // close the open project FIRST — otherwise autosave writes it
+                // right back into the freshly-cleared projects table
+                useProjectStore.getState().closeProject();
+                useUIStore.getState().setAlbum(null);
                 await Promise.all([
                   db.albums.clear(),
                   db.photos.clear(),
