@@ -9,6 +9,7 @@ import type { PhotoRecord } from '../types';
 import {
   decodeImage,
   isHeic,
+  makeCanvas,
   makeScaledImage,
   normalizeImageBlob,
   PROXY_SIZE,
@@ -21,15 +22,30 @@ export interface ImportResult {
   errors: { fileName: string; message: string }[];
 }
 
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-const VIDEO_TYPES = ['video/mp4', 'video/webm'];
+const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'];
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v)$/i;
+const IMAGE_EXT = /\.(jpe?g|png|webp|heic|heif|gif|bmp|avif|tiff?)$/i;
+
+/**
+ * Classify an incoming file. Deliberately permissive: iPhones hand over
+ * video/quicktime .mov files, sometimes with an EMPTY mime type — classify by
+ * extension too, and let any image/* through (the decoder is the real gate,
+ * and it reports a per-file error when it can't handle one).
+ */
+export function classifyFile(file: Pick<File, 'name' | 'type'>): 'image' | 'video' | null {
+  const type = (file.type || '').toLowerCase();
+  if (type.startsWith('video/')) {
+    return VIDEO_TYPES.includes(type) || VIDEO_EXT.test(file.name) ? 'video' : null;
+  }
+  if (type.startsWith('image/')) return 'image';
+  // no mime type — fall back to the extension
+  if (VIDEO_EXT.test(file.name)) return 'video';
+  if (IMAGE_EXT.test(file.name)) return 'image';
+  return null;
+}
 
 export function isSupportedFile(file: File): boolean {
-  return (
-    IMAGE_TYPES.includes(file.type.toLowerCase()) ||
-    VIDEO_TYPES.includes(file.type.toLowerCase()) ||
-    isHeic(file)
-  );
+  return classifyFile(file) !== null || isHeic(file);
 }
 
 async function extractExif(file: File): Promise<{
@@ -106,9 +122,9 @@ async function videoPoster(file: File): Promise<{
     if (!video.videoWidth || !video.videoHeight) {
       throw new Error('Video has no visible frames');
     }
-    const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-    canvas.getContext('2d')!.drawImage(video, 0, 0);
-    const bmp = await createImageBitmap(canvas);
+    const { canvas, ctx } = makeCanvas(video.videoWidth, video.videoHeight);
+    ctx.drawImage(video, 0, 0);
+    const bmp = await createImageBitmap(canvas as CanvasImageSource);
     // full-size poster (stored as the proxy) keeps exports sharp; the thumb
     // is only for the library grid
     const [thumb, poster] = await Promise.all([
@@ -129,23 +145,30 @@ async function videoPoster(file: File): Promise<{
   }
 }
 
-export async function importFiles(files: File[], albumId: string): Promise<ImportResult> {
+export async function importFiles(
+  files: File[],
+  albumId: string,
+  onProgress?: (done: number, total: number) => void,
+): Promise<ImportResult> {
   const imported: PhotoRecord[] = [];
   const errors: { fileName: string; message: string }[] = [];
   const existing = await db.photos.where('albumId').equals(albumId).toArray();
   let order = existing.reduce((m, p) => Math.max(m, p.order), 0) + 1;
+  let done = 0;
 
   for (const file of files) {
-    if (!isSupportedFile(file)) {
+    const kind = classifyFile(file) ?? (isHeic(file) ? 'image' : null);
+    if (kind === null) {
       errors.push({
-        fileName: file.name,
-        message: 'Unsupported format — use JPEG, PNG, WebP, HEIC, MP4 or WebM.',
+        fileName: file.name || 'unnamed file',
+        message: 'Unsupported format — photos (JPEG/PNG/WebP/HEIC) and clips (MP4/MOV/WebM) work.',
       });
+      onProgress?.(++done, files.length);
       continue;
     }
     try {
       const id = uid();
-      const isVideo = VIDEO_TYPES.includes(file.type.toLowerCase());
+      const isVideo = kind === 'video';
       const exif = await extractExif(file);
 
       let width: number;
@@ -162,7 +185,7 @@ export async function importFiles(files: File[], albumId: string): Promise<Impor
         proxyBlob = poster.poster;
       } else {
         storedBlob = await normalizeImageBlob(file);
-        const bitmap = await decodeImage(storedBlob);
+        const bitmap = await decodeImage(storedBlob, exif.orientation);
         width = bitmap.width;
         height = bitmap.height;
         // PNG/WebP may carry transparency — JPEG proxies would turn it black
@@ -206,23 +229,29 @@ export async function importFiles(files: File[], albumId: string): Promise<Impor
       imported.push(record);
     } catch (err) {
       errors.push({
-        fileName: file.name,
+        fileName: file.name || 'unnamed file',
         message: err instanceof Error ? err.message : 'Import failed',
       });
     }
+    onProgress?.(++done, files.length);
   }
 
-  // re-run duplicate detection across the album
-  const all = await db.photos.where('albumId').equals(albumId).toArray();
-  const dupes = findDuplicates(all);
-  await db.transaction('rw', db.photos, async () => {
-    for (const p of all) {
-      const flag = dupes.get(p.id);
-      if (flag !== p.duplicateOf) {
-        await db.photos.update(p.id, { duplicateOf: flag });
+  // re-run duplicate detection across the album — never let this housekeeping
+  // step turn a successful import into a silent failure
+  try {
+    const all = await db.photos.where('albumId').equals(albumId).toArray();
+    const dupes = findDuplicates(all);
+    await db.transaction('rw', db.photos, async () => {
+      for (const p of all) {
+        const flag = dupes.get(p.id);
+        if (flag !== p.duplicateOf) {
+          await db.photos.update(p.id, { duplicateOf: flag });
+        }
       }
-    }
-  });
+    });
+  } catch {
+    /* duplicate flags are advisory */
+  }
 
   return { imported, errors };
 }

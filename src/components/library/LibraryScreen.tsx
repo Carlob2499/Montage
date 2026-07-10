@@ -24,6 +24,7 @@ export default function LibraryScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [editPhotoId, setEditPhotoId] = useState<string | null>(null);
   const [showStorage, setShowStorage] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -59,12 +60,32 @@ export default function LibraryScreen() {
       albumId = id;
     }
     setBusy(true);
+    setImportProgress({ done: 0, total: files.length });
     try {
-      const result = await importFiles(files, albumId);
-      if (result.imported.length) toast(`Imported ${result.imported.length} file(s)`, 'success');
-      for (const err of result.errors) toast(`${err.fileName}: ${err.message}`, 'error');
+      const result = await importFiles(files, albumId, (done, total) =>
+        setImportProgress({ done, total }),
+      );
+      if (result.imported.length) {
+        toast(`Imported ${result.imported.length} of ${files.length} file(s)`, 'success');
+      }
+      if (result.errors.length) {
+        // summarize instead of a toast per file — 30 vanishing toasts read as "nothing happened"
+        const first = result.errors[0];
+        toast(
+          `${result.errors.length} file(s) failed — e.g. ${first.fileName}: ${first.message}`,
+          'error',
+        );
+      }
+      if (!result.imported.length && !result.errors.length) {
+        toast('No files received from the picker — try selecting them again', 'error');
+      }
+    } catch (err) {
+      // batch-level failures must NEVER be silent
+      console.error(err);
+      toast(err instanceof Error ? `Import failed: ${err.message}` : 'Import failed', 'error');
     } finally {
       setBusy(false);
+      setImportProgress(null);
     }
   };
 
@@ -316,13 +337,19 @@ export default function LibraryScreen() {
         ) : (
           <div className="flex gap-2">
             <button className="btn-primary flex-1" disabled={busy} onClick={() => fileRef.current?.click()}>
-              {busy ? 'Importing…' : '+ Import photos'}
+              {busy && importProgress
+                ? `Importing ${importProgress.done}/${importProgress.total}…`
+                : busy
+                  ? 'Importing…'
+                  : '+ Import photos & videos'}
             </button>
             <input
               ref={fileRef}
               type="file"
               multiple
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm"
+              // wildcard accept: anything narrower makes iOS gray out videos
+              // (it records .mov/QuickTime) and some album photos in the picker
+              accept="image/*,video/*"
               className="hidden"
               onChange={(e) => {
                 // materialize before clearing — FileList is live and empties on reset

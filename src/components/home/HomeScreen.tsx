@@ -58,9 +58,20 @@ export default function HomeScreen() {
       <header className="flex items-center justify-between py-4">
         <div>
           <h1 className="font-['Space_Grotesk'] text-2xl font-bold tracking-tight">
-            Montage <span className="text-accent-500">Studio</span>
+            Montage{' '}
+            <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-violet-500 bg-clip-text text-transparent">
+              Studio
+            </span>
           </h1>
-          <p className="text-sm text-ink-400">Seamless carousels, on your device only.</p>
+          <p className="text-sm text-ink-400">
+            Seamless carousels, on your device only ·{' '}
+            <button
+              className="underline decoration-dotted underline-offset-2"
+              onClick={() => useUIStore.getState().showWelcome()}
+            >
+              about
+            </button>
+          </p>
         </div>
         <button className="btn-soft" onClick={() => go('library')}>
           Photo Library

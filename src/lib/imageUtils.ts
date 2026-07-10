@@ -39,12 +39,72 @@ export async function normalizeImageBlob(file: File): Promise<Blob> {
   }
 }
 
+/** OffscreenCanvas where available, HTMLCanvasElement fallback (older iOS). */
+export function makeCanvas(
+  w: number,
+  h: number,
+): { canvas: OffscreenCanvas | HTMLCanvasElement; ctx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D } {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    const canvas = new OffscreenCanvas(w, h);
+    return { canvas, ctx: canvas.getContext('2d')! };
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  return { canvas, ctx: canvas.getContext('2d')! };
+}
+
+/** convertToBlob / toBlob across canvas kinds. */
+export async function canvasToBlob(
+  canvas: OffscreenCanvas | HTMLCanvasElement,
+  type: string,
+  quality?: number,
+): Promise<Blob> {
+  if ('convertToBlob' in canvas) {
+    return canvas.convertToBlob({ type, quality });
+  }
+  return new Promise<Blob>((resolve, reject) => {
+    (canvas as HTMLCanvasElement).toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Canvas encoding failed'))),
+      type,
+      quality,
+    );
+  });
+}
+
 /**
  * Decode a blob to an ImageBitmap, applying EXIF orientation so pixels are
- * always upright from here on.
+ * always upright from here on. Falls back for browsers that reject the
+ * options argument (older Safari) — pass `exifOrientation` so the rotation
+ * can be applied manually there.
  */
-export async function decodeImage(blob: Blob): Promise<ImageBitmap> {
-  return createImageBitmap(blob, { imageOrientation: 'from-image' });
+export async function decodeImage(blob: Blob, exifOrientation?: number): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  } catch {
+    // options unsupported (or decode failed WITH options) — plain decode,
+    // then bake the EXIF rotation in manually
+    const raw = await createImageBitmap(blob);
+    const o = exifOrientation ?? 1;
+    if (o <= 1 || o > 8) return raw;
+    const rotated = o >= 5; // 5-8 involve a 90° rotation
+    const { canvas, ctx } = makeCanvas(rotated ? raw.height : raw.width, rotated ? raw.width : raw.height);
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    switch (o) {
+      case 2: ctx.scale(-1, 1); break;
+      case 3: ctx.rotate(Math.PI); break;
+      case 4: ctx.scale(1, -1); break;
+      case 5: ctx.rotate(Math.PI / 2); ctx.scale(1, -1); break;
+      case 6: ctx.rotate(Math.PI / 2); break;
+      case 7: ctx.rotate(-Math.PI / 2); ctx.scale(1, -1); break;
+      case 8: ctx.rotate(-Math.PI / 2); break;
+    }
+    ctx.drawImage(raw, -raw.width / 2, -raw.height / 2);
+    ctx.restore();
+    raw.close();
+    return createImageBitmap(canvas as CanvasImageSource);
+  }
 }
 
 /**
@@ -61,13 +121,12 @@ export async function makeScaledImage(
   const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = new OffscreenCanvas(w, h);
-  const ctx = canvas.getContext('2d')!;
+  const { canvas, ctx } = makeCanvas(w, h);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, w, h);
   const blob = preserveAlpha
-    ? await canvas.convertToBlob({ type: 'image/png' })
-    : await canvas.convertToBlob({ type: 'image/jpeg', quality });
+    ? await canvasToBlob(canvas, 'image/png')
+    : await canvasToBlob(canvas, 'image/jpeg', quality);
   return { blob, width: w, height: h };
 }
 

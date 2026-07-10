@@ -61,8 +61,13 @@ function neededDecodeScale(
   return Math.min(1, scale * 1.25);
 }
 
-async function decodeScaled(blob: Blob, targetW: number, srcW: number): Promise<ImageBitmap> {
-  if (targetW >= srcW || targetW <= 0) return decodeImage(blob);
+async function decodeScaled(
+  blob: Blob,
+  targetW: number,
+  srcW: number,
+  orientation?: number,
+): Promise<ImageBitmap> {
+  if (targetW >= srcW || targetW <= 0) return decodeImage(blob, orientation);
   try {
     return await createImageBitmap(blob, {
       imageOrientation: 'from-image',
@@ -71,7 +76,7 @@ async function decodeScaled(blob: Blob, targetW: number, srcW: number): Promise<
     });
   } catch {
     // resize options unsupported — fall back to a full decode
-    return decodeImage(blob);
+    return decodeImage(blob, orientation);
   }
 }
 
@@ -112,7 +117,7 @@ export async function loadResources(
       let bitmap: ImageBitmap;
       if (!useProxies && record && record.kind === 'image') {
         const scale = neededDecodeScale(doc, id, record.width, record.height, stack);
-        bitmap = await decodeScaled(row.blob, record.width * scale, record.width);
+        bitmap = await decodeScaled(row.blob, record.width * scale, record.width, record.orientation);
       } else {
         bitmap = await decodeImage(row.blob);
       }
