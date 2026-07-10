@@ -18,10 +18,13 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
    slice boundaries. Anything spatial applied per-panel must be frame-aware:
    - photo layers render per-panel *sub-rects* padded by `CONTENT_PAD` so the sharpen
      convolution matches a full-frame render inside the visible area;
-   - vignette takes a `FrameContext` (offset within the layer frame) — see the
-     "sub-rect rendering (seam continuity)" test in `editStack.test.ts`;
+   - vignette AND grain take a `FrameContext` (offset within the layer frame) — grain is
+     hash-noise on absolute frame coordinates, see the "sub-rect rendering (seam
+     continuity)" tests in `editStack.test.ts`;
    - the blurred backdrop is rendered ONCE per export (`resources.backdropCache`) and
-     sliced, never re-blurred per panel.
+     sliced, never re-blurred per panel;
+   - frame-style geometry (torn edges, tape strips) is deterministic per layer id
+     (`src/lib/frameStyles.ts`) so Konva and export draw the same shapes.
 2. **Preview/export parity.** The editor (Konva) and the export renderer are separate code
    paths that must visually agree: text metrics (`measureTextLayer` — real glyph
    measurement, per-glyph letterSpacing drawing), cover-fit math (`coverCrop` used by
@@ -71,7 +74,20 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 - Layer nodes are `React.memo`ed; keep layer object identity stable for untouched layers
   in store updates (map-and-replace only patched ids).
 
+## Other load-bearing decisions
+
+- The service worker is CUSTOM (`src/sw.ts`, vite-plugin-pwa `injectManifest`) — it
+  handles the Android share-target inbox. Don't switch back to `generateSW`.
+- Dexie is at version(2) (`styles` table). New tables/indexes = a new version() block,
+  never edit an existing one.
+- `autoLayout` (photo dump / recap) is seeded and pure — 'dump' style must stay seam-safe
+  by construction (property test in `autoLayout.test.ts`).
+- New Adjustments fields need: NEUTRAL_ADJUSTMENTS default + `normalizeAdjustments` covers
+  old stored stacks automatically + a slider in ADJUSTMENT_DEFS.
+- Web Share flow is two-tap (render → share) because navigator.share must be called
+  synchronously inside a user gesture.
+
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 91 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 127 tests.

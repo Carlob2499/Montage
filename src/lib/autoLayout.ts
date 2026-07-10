@@ -62,13 +62,14 @@ function sortByTime(photos: PhotoDim[]): PhotoDim[] {
   );
 }
 
-/** rows×cols grid that fits k items reasonably inside a panel */
+/** rows×cols grid that fits ANY k items inside a panel */
 function gridFor(k: number): { rows: number; cols: number } {
   if (k <= 1) return { rows: 1, cols: 1 };
   if (k === 2) return { rows: 2, cols: 1 };
   if (k <= 4) return { rows: 2, cols: 2 };
   if (k <= 6) return { rows: 3, cols: 2 };
-  return { rows: 3, cols: 3 };
+  const cols = Math.ceil(Math.sqrt(k));
+  return { rows: Math.ceil(k / cols), cols };
 }
 
 /**

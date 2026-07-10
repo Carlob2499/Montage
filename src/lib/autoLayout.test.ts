@@ -118,6 +118,17 @@ describe('autoLayout edge cases', () => {
     expect(autoLayout([], 1350, 3, { ...OPTS, style: 'dump' })).toEqual([]);
   });
 
+  it('keeps huge batches inside the canvas (12+ photos per panel)', () => {
+    const many = Array.from({ length: 30 }, (_, i) => photo(`m${i}`));
+    const placed = autoLayout(many, 1350, 2, { ...OPTS, style: 'dump' });
+    expect(placed).toHaveLength(30);
+    for (const p of placed) {
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y + p.height).toBeLessThanOrEqual(1350);
+      expect(p.x + p.width).toBeLessThanOrEqual(2 * 1080);
+    }
+  });
+
   it('handles one photo', () => {
     const placed = autoLayout([photo('solo')], 1350, 1, { ...OPTS, style: 'dump' });
     expect(placed).toHaveLength(1);

@@ -13,8 +13,9 @@ import {
 } from '../../../lib/exporter';
 import type { ExportedFile, ExportOptions } from '../../../lib/exporter';
 import { canShareFiles, shareFiles, shareSupported, toShareFiles } from '../../../lib/share';
+import { exportPanoramaVideo, videoExportSupported } from '../../../lib/videoExport';
 
-type Target = 'panels' | 'grid' | 'panorama';
+type Target = 'panels' | 'grid' | 'panorama' | 'video';
 type Delivery = 'share' | 'files' | 'zip';
 
 export default function ExportSheet({ onClose }: { onClose: () => void }) {
@@ -30,7 +31,28 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
   // synchronously inside a user gesture, so rendering happens on tap 1 and
   // the share sheet opens on tap 2)
   const [prepared, setPrepared] = useState<File[] | null>(null);
+  const [videoDuration, setVideoDuration] = useState(8);
+  const [recording, setRecording] = useState<number | null>(null);
   if (!doc) return null;
+
+  const runVideo = async () => {
+    await useProjectStore.getState().save();
+    setRecording(0);
+    try {
+      const file = await exportPanoramaVideo(doc, {
+        durationSec: videoDuration,
+        onProgress: (f) => setRecording(f),
+      });
+      downloadBlob(file.blob, file.name);
+      toast(`Recorded ${file.name} ✓`, 'success');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast(err instanceof Error ? err.message : 'Video export failed', 'error');
+    } finally {
+      setRecording(null);
+    }
+  };
 
   const renderFiles = async (opts: ExportOptions): Promise<ExportedFile[]> => {
     if (target === 'panorama') {
@@ -152,6 +174,17 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
                   setPrepared(null);
                 }}
               />
+              {videoExportSupported() && doc.panelCount > 1 && (
+                <TargetRow
+                  active={target === 'video'}
+                  title="Auto-scroll video (experimental)"
+                  subtitle="Smooth swipe across the canvas — for Reels/TikTok"
+                  onClick={() => {
+                    setTarget('video');
+                    setPrepared(null);
+                  }}
+                />
+              )}
             </>
           ) : (
             <TargetRow
@@ -163,7 +196,24 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           )}
         </section>
 
-        <section className="space-y-2">
+        {target === 'video' && (
+          <section className="space-y-2">
+            <Slider
+              label="Scroll duration (s)"
+              min={4}
+              max={20}
+              value={videoDuration}
+              onChange={setVideoDuration}
+            />
+            <p className="text-[11px] text-ink-400">
+              Records in real time (≈{videoDuration + 2}s) at 1080×
+              {doc.aspect === '4:5' ? 1350 : doc.aspect === '1:1' ? 1080 : 1920}, WebM/MP4
+              depending on the browser.
+            </p>
+          </section>
+        )}
+
+        <section className={`space-y-2 ${target === 'video' ? 'hidden' : ''}`}>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Format</h4>
           <div className="flex gap-2">
             <button
@@ -200,7 +250,7 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           )}
         </section>
 
-        <section className="space-y-2">
+        <section className={`space-y-2 ${target === 'video' ? 'hidden' : ''}`}>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Delivery</h4>
           <div className="flex gap-2">
             {shareSupported() && (
@@ -249,7 +299,13 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           </button>
         )}
 
-        {delivery === 'share' ? (
+        {target === 'video' ? (
+          <button className="btn-primary w-full" disabled={recording !== null} onClick={() => void runVideo()}>
+            {recording !== null
+              ? `Recording… ${Math.round(recording * 100)}%`
+              : '⏺ Record panorama video'}
+          </button>
+        ) : delivery === 'share' ? (
           prepared ? (
             <button className="btn-primary w-full" onClick={shareNow}>
               📤 Share {prepared.length} file(s) now

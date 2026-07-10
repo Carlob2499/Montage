@@ -28,6 +28,9 @@ export interface PhotoRecord {
   /** EXIF orientation 1-8; thumbnails/render are pre-rotated so this is informational */
   orientation?: number;
   gps?: { lat: number; lng: number };
+  /** normalized face boxes from the Shape Detection API; [] = scanned, none
+   *  found; undefined = not scanned yet */
+  faces?: { x: number; y: number; width: number; height: number }[];
   tags: string[];
   /** manual sort position within album */
   order: number;
@@ -206,6 +209,19 @@ export interface StickerRecord {
   id: string;
   name: string;
   dateAdded: number;
+}
+
+/** saved style collection: keeps a feed's look consistent across projects */
+export interface StyleRecord {
+  id: string;
+  name: string;
+  background: Background;
+  text: {
+    fontFamily: string;
+    fontWeight: number;
+    fill: string;
+  };
+  createdAt: number;
 }
 
 // --- Templates -------------------------------------------------------------------

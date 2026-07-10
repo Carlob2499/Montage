@@ -346,6 +346,7 @@ export default function LibraryScreen() {
 function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string; name: string }[] }) {
   const toast = useUIStore((s) => s.toast);
   const setAlbum = useUIStore((s) => s.setAlbum);
+  const go = useUIStore((s) => s.go);
   return (
     <select
       className="input-base w-auto py-2 text-xs"
@@ -353,7 +354,21 @@ function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string;
       onChange={async (e) => {
         const action = e.target.value;
         e.target.value = '';
-        if (action === 'rename') {
+        if (action === 'recap') {
+          const album = await db.albums.get(albumId);
+          const photos = (await db.photos.where('albumId').equals(albumId).toArray()).filter(
+            (p) => p.kind === 'image',
+          );
+          if (!album || photos.length < 2) {
+            return toast('Need at least 2 photos for a recap', 'error');
+          }
+          const { buildRecapDoc } = await import('../../lib/recap');
+          const doc = buildRecapDoc(album, photos, uid);
+          await db.projects.put(doc);
+          useProjectStore.getState().loadProject(doc);
+          toast('Recap generated — tweak and export ✨', 'success');
+          go('editor');
+        } else if (action === 'rename') {
           const name = prompt('Rename album:');
           if (name?.trim()) await db.albums.update(albumId, { name: name.trim() });
         } else if (action === 'merge') {
@@ -375,6 +390,7 @@ function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string;
       }}
     >
       <option value="">⋯</option>
+      <option value="recap">✨ Generate recap</option>
       <option value="rename">Rename</option>
       <option value="merge">Merge into…</option>
       <option value="delete">Delete album</option>

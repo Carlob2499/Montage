@@ -26,13 +26,16 @@ at `https://<user>.github.io/Montage/` and can be installed to your phone's home
 
 | Area | Details |
 | --- | --- |
-| Library | Albums (rename/merge/delete), drag-drop import, JPEG/PNG/WebP/HEIC + short MP4/WebM, EXIF date sort, tags + search, multi-select batch move/tag/delete, duplicate detection, storage meter |
-| Editing | Non-destructive stacks: exposure, contrast, highlights/shadows, saturation, vibrance, temperature/tint, sharpness, vignette; crop/rotate/flip; 12+ original presets; copy/paste edits across an album |
-| Canvas | Freeform place/scale/rotate/layer with snapping + alignment guides, structured 2–12 cell grids, 30 original templates (JSON schema — add your own in `src/templates/templates.ts`), text tool with 5 bundled open-license fonts, solid/gradient/blurred-photo backdrops, sticker PNG overlays |
-| Carousel | Live seam guides, seam-safety warnings for text/subjects on slice lines, swipe-simulation preview, panel reorder/insert/delete, per-panel captions, >10 panels supported (up to 20) |
+| Library | Albums (rename/merge/delete), drag-drop import, JPEG/PNG/WebP/HEIC + short MP4/WebM, EXIF date sort, tags + search, multi-select batch move/tag/delete, duplicate detection, storage meter, recent-imports strip |
+| One-tap layouts | ✨ Photo dump (seeded seam-safe scatter), clean grid, seamless panorama strip — re-shuffle anytime; per-album ✨ recap generator (cover with EXIF stats incl. GPS distance, auto-laid panels, outro) |
+| Editing | Non-destructive stacks: exposure, contrast, highlights/shadows, saturation, vibrance, temperature/tint, sharpness, vignette, film grain (seam-continuous); crop/rotate/flip; 15 original presets; copy/paste edits across an album |
+| Scrapbook & film | Polaroid/taped/torn photo frames (deterministic, identical in preview & export), procedural sticker starter pack (washi tape, torn paper, light leaks, doodles), date-stamp text, film templates |
+| Canvas | Freeform place/scale/rotate/layer with snapping + alignment guides, structured 2–12 cell grids, 37 original templates across 7 categories, text tool with 5 bundled open-license fonts, solid/gradient (multi-stop trend palettes)/blurred-photo backdrops, frosted-glass caption cards |
+| Carousel | Live seam guides, seam-safety warnings for text/subjects **and detected faces** (Shape Detection API where available) with one-tap "nudge clear", swipe-simulation preview, panel reorder/insert/delete, per-panel captions, >10 panels (up to 20) |
 | Profile grid | 3×N planner with tiles exported in correct upload order (bottom-right first) |
-| Export | PNG/JPEG (quality slider) at exact Instagram-native sizes, sRGB, single panel / numbered files / ZIP with captions.txt, full-res panorama |
-| Projects | IndexedDB save/load, 30s + on-blur autosave, duplication, JSON export/import backup |
+| Export & share | 📤 OS share sheet (panels straight to Instagram), PNG/JPEG at exact Instagram-native sizes, sRGB, ZIP with captions.txt, full-res panorama, experimental auto-scroll panorama video (WebM/MP4) |
+| Receive shares | Android: Montage appears in the system share sheet — shared photos land in a "Shared to Montage" album |
+| Projects & styles | IndexedDB save/load, 30s + on-blur autosave, duplication, JSON export/import backup, saved style collections (backdrop + text look applied across projects) |
 
 ### HEIC
 

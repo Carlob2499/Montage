@@ -14,7 +14,12 @@ import ExportSheet from './sheets/ExportSheet';
 import PhotoEditSheet from './PhotoEditSheet';
 import { addTextLayer } from './canvasActions';
 import { layerBBox } from '../../lib/renderer';
-import { seamsCrossed } from '../../lib/slicer';
+import { faceCanvasRect, suggestNudge, SEAM_MARGIN } from '../../lib/seamAssist';
+import { useFaceScan, faceDetectionSupported } from '../../hooks/useFaceScan';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../db/db';
+import type { Rect } from '../../lib/slicer';
+import type { PhotoRecord } from '../../types';
 
 export default function EditorScreen() {
   const doc = useProjectStore((s) => s.doc);
@@ -30,6 +35,7 @@ export default function EditorScreen() {
 
   useAutosave();
   useKeyboardShortcuts();
+  useFaceScan();
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -52,7 +58,6 @@ export default function EditorScreen() {
     );
   }
 
-  const seamWarnings = countSeamWarnings();
   const selectedPhotoLayer = doc.layers.find(
     (l) => selectedIds.includes(l.id) && l.type === 'photo' && l.photoId,
   );
@@ -87,11 +92,7 @@ export default function EditorScreen() {
       </header>
 
       {/* seam safety warning */}
-      {seamWarnings > 0 && (
-        <div className="z-10 bg-red-500/10 px-4 py-1 text-center text-xs font-medium text-red-600 dark:text-red-400">
-          ⚠ {seamWarnings} seam-safety warning(s): text or key subject sits on a slice line
-        </div>
-      )}
+      <SeamSafetyBanner />
 
       {/* canvas */}
       <div ref={viewportRef} className="relative min-h-0 flex-1 overflow-hidden bg-ink-100 dark:bg-ink-950">
@@ -132,16 +133,96 @@ export default function EditorScreen() {
   );
 }
 
-function countSeamWarnings(): number {
-  const doc = useProjectStore.getState().doc;
-  if (!doc || doc.mode !== 'carousel') return 0;
-  const warned = new Set<number>();
+function unionRects(rects: Rect[]): Rect {
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  return {
+    x,
+    y,
+    width: Math.max(...rects.map((r) => r.x + r.width)) - x,
+    height: Math.max(...rects.map((r) => r.y + r.height)) - y,
+  };
+}
+
+/**
+ * Seam-safety: text layers, flagged subjects, and detected faces sitting on
+ * a slice line, with a one-tap minimal nudge to clear them all.
+ */
+function SeamSafetyBanner() {
+  const doc = useProjectStore((s) => s.doc);
+  const photoIds = doc
+    ? [...new Set(doc.layers.flatMap((l) => (l.type === 'photo' && l.photoId ? [l.photoId] : [])))]
+    : [];
+  const records = useLiveQuery(async () => {
+    const rows = await db.photos.bulkGet(photoIds);
+    return new Map(
+      rows.filter((r): r is PhotoRecord => r !== undefined).map((r) => [r.id, r]),
+    );
+  }, [photoIds.join(',')]);
+
+  if (!doc || doc.mode !== 'carousel') return null;
+
+  // collect the "must not cross a seam" rect(s) per layer
+  const warned: { layerId: string; bbox: Rect; kind: string }[] = [];
   for (const layer of doc.layers) {
-    if (layer.type === 'text' || (layer.type === 'photo' && layer.isSubject)) {
-      for (const s of seamsCrossed(layerBBox(layer), doc.panelCount, 40)) warned.add(s);
+    if (layer.type === 'text') {
+      const bbox = layerBBox(layer);
+      if (suggestNudge(bbox, doc.panelCount) !== 0) {
+        warned.push({ layerId: layer.id, bbox, kind: 'text' });
+      }
+      continue;
+    }
+    if (layer.type !== 'photo') continue;
+    const rects: Rect[] = [];
+    if (layer.isSubject) rects.push(layerBBox(layer));
+    const record = records?.get(layer.photoId);
+    if (record?.faces?.length && layer.rotation === 0) {
+      for (const f of record.faces) {
+        const r = faceCanvasRect(f, record.width, record.height, layer);
+        if (r) rects.push(r);
+      }
+    }
+    if (!rects.length) continue;
+    const bbox = unionRects(rects);
+    if (suggestNudge(bbox, doc.panelCount) !== 0) {
+      warned.push({ layerId: layer.id, bbox, kind: layer.isSubject ? 'subject' : 'face' });
     }
   }
-  return warned.size;
+
+  if (warned.length === 0) return null;
+
+  const fixable = warned.filter((w) => {
+    const dx = suggestNudge(w.bbox, doc.panelCount);
+    return dx !== null && dx !== 0;
+  });
+
+  const fixAll = () => {
+    const moves = new Map<string, number>();
+    for (const w of fixable) {
+      const dx = suggestNudge(w.bbox, doc.panelCount, SEAM_MARGIN);
+      if (dx) moves.set(w.layerId, dx);
+    }
+    if (!moves.size) return;
+    useProjectStore.getState().commit((d) => ({
+      ...d,
+      layers: d.layers.map((l) => (moves.has(l.id) ? { ...l, x: l.x + moves.get(l.id)! } : l)),
+    }));
+  };
+
+  const faceNote = faceDetectionSupported() ? '' : ' (face detection unavailable here)';
+  return (
+    <div className="z-10 flex items-center justify-center gap-2 bg-red-500/10 px-4 py-1 text-xs font-medium text-red-600 dark:text-red-400">
+      <span>
+        ⚠ {warned.length} seam warning(s): {[...new Set(warned.map((w) => w.kind))].join('/')} on a
+        slice line{faceNote}
+      </span>
+      {fixable.length > 0 && (
+        <button className="rounded-lg bg-red-500 px-2 py-0.5 font-semibold text-white" onClick={fixAll}>
+          Nudge {fixable.length} clear
+        </button>
+      )}
+    </div>
+  );
 }
 
 function UndoRedo() {

@@ -11,6 +11,7 @@ import type {
   PhotoRecord,
   ProjectDoc,
   StickerRecord,
+  StyleRecord,
 } from '../types';
 
 export interface BlobRow {
@@ -37,6 +38,7 @@ class MontageDB extends Dexie {
   edits!: Table<EditRow, string>;
   projects!: Table<ProjectDoc, string>;
   stickers!: Table<StickerRow, string>;
+  styles!: Table<StyleRecord, string>;
 
   constructor() {
     super('montage-studio');
@@ -49,6 +51,10 @@ class MontageDB extends Dexie {
       edits: 'photoId',
       projects: 'id, name, updatedAt',
       stickers: 'id, dateAdded',
+    });
+    // v2: saved style collections
+    this.version(2).stores({
+      styles: 'id, name, createdAt',
     });
   }
 }
