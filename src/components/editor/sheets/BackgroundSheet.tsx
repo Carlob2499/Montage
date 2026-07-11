@@ -3,6 +3,7 @@ import Sheet from '../../shared/Sheet';
 import { db, uid } from '../../../db/db';
 import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
+import { promptText } from '../../../state/dialogStore';
 import { Slider } from './TextSheet';
 import type { Background, TextLayer } from '../../../types';
 
@@ -203,7 +204,11 @@ function StyleCollections() {
   const saveCurrent = async () => {
     const doc = useProjectStore.getState().doc;
     if (!doc) return;
-    const name = prompt('Style name (e.g. "warm minimal"):');
+    const name = await promptText({
+      title: 'Save style',
+      placeholder: 'e.g. warm minimal',
+      confirmLabel: 'Save',
+    });
     if (!name?.trim()) return;
     const firstText = doc.layers.find((l): l is TextLayer => l.type === 'text');
     await db.styles.add({

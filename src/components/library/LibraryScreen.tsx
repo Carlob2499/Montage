@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, deleteAlbum, deletePhotos, mergeAlbums, storageBreakdown, uid } from '../../db/db';
 import { importFiles } from '../../db/importPhotos';
 import { useUIStore } from '../../state/uiStore';
+import { promptText, confirmAction } from '../../state/dialogStore';
 import { useProjectStore } from '../../state/projectStore';
 import { sortPhotos, searchPhotos } from '../../lib/photoSort';
 import { formatBytes } from '../../lib/imageUtils';
@@ -44,24 +45,36 @@ export default function LibraryScreen() {
   const shown = photos ? searchPhotos(sortPhotos(photos, album?.sortMode ?? 'dateTaken'), query) : [];
 
   const createAlbum = async () => {
-    const name = prompt('Album name (one per trip or event works well):');
+    const name = await promptText({
+      title: 'New album',
+      message: 'One per trip or event works well.',
+      placeholder: 'Album name',
+      confirmLabel: 'Create',
+    });
     if (!name?.trim()) return;
-    const id = uid();
-    await db.albums.add({ id, name: name.trim(), createdAt: Date.now(), sortMode: 'dateTaken' });
-    setAlbum(id);
+    try {
+      const id = uid();
+      await db.albums.add({ id, name: name.trim(), createdAt: Date.now(), sortMode: 'dateTaken' });
+      setAlbum(id);
+    } catch (err) {
+      console.error(err);
+      toast('Could not create album — storage may be full or unavailable', 'error');
+    }
   };
 
   const onFiles = async (files: File[]) => {
-    let albumId = activeAlbumId;
-    if (!albumId) {
-      const id = uid();
-      await db.albums.add({ id, name: 'My photos', createdAt: Date.now(), sortMode: 'dateTaken' });
-      setAlbum(id);
-      albumId = id;
-    }
     setBusy(true);
     setImportProgress({ done: 0, total: files.length });
     try {
+      let albumId = activeAlbumId;
+      if (!albumId) {
+        // auto-create a default album inside the try so a failed DB write
+        // surfaces a toast instead of silently no-op'ing the whole import
+        const id = uid();
+        await db.albums.add({ id, name: 'My photos', createdAt: Date.now(), sortMode: 'dateTaken' });
+        setAlbum(id);
+        albumId = id;
+      }
       const result = await importFiles(files, albumId, (done, total) =>
         setImportProgress({ done, total }),
       );
@@ -129,7 +142,13 @@ export default function LibraryScreen() {
   };
 
   const batchDelete = async () => {
-    if (!selected.size || !confirm(`Delete ${selected.size} photo(s) permanently?`)) return;
+    if (!selected.size) return;
+    const ok = await confirmAction({
+      title: `Delete ${selected.size} photo(s)?`,
+      message: 'This permanently removes them from this device.',
+      destructive: true,
+    });
+    if (!ok) return;
     await deletePhotos([...selected]);
     setSelected(new Set());
     setSelecting(false);
@@ -139,7 +158,12 @@ export default function LibraryScreen() {
     if (!albums || !selected.size) return;
     const others = albums.filter((a) => a.id !== activeAlbumId);
     if (!others.length) return toast('Create another album first', 'error');
-    const name = prompt(`Move to which album?\n${others.map((a) => `· ${a.name}`).join('\n')}`);
+    const name = await promptText({
+      title: 'Move to album',
+      message: `Type the album name:\n${others.map((a) => `· ${a.name}`).join('\n')}`,
+      placeholder: 'Album name',
+      confirmLabel: 'Move',
+    });
     const target = others.find((a) => a.name.toLowerCase() === name?.trim().toLowerCase());
     if (!target) return;
     await db.photos.where('id').anyOf([...selected]).modify({ albumId: target.id });
@@ -150,7 +174,11 @@ export default function LibraryScreen() {
 
   const batchTag = async () => {
     if (!selected.size) return;
-    const tag = prompt('Add tag to selected photos:');
+    const tag = await promptText({
+      title: 'Add tag',
+      placeholder: 'e.g. beach, 2026, family',
+      confirmLabel: 'Add',
+    });
     if (!tag?.trim()) return;
     const clean = tag.trim().toLowerCase();
     await db.photos
@@ -223,10 +251,16 @@ export default function LibraryScreen() {
                 : 'bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200'
             }`}
             onClick={() => setAlbum(a.id)}
-            onDoubleClick={() => {
-              const name = prompt('Rename album:', a.name);
-              if (name?.trim()) void db.albums.update(a.id, { name: name.trim() });
-            }}
+            onDoubleClick={() =>
+              void (async () => {
+                const name = await promptText({
+                  title: 'Rename album',
+                  defaultValue: a.name,
+                  confirmLabel: 'Rename',
+                });
+                if (name?.trim()) void db.albums.update(a.id, { name: name.trim() });
+              })()
+            }
           >
             {a.name}
           </button>
@@ -262,7 +296,12 @@ export default function LibraryScreen() {
             className="font-semibold underline"
             onClick={async () => {
               const ids = photos!.filter((p) => p.duplicateOf).map((p) => p.id);
-              if (confirm(`Delete ${ids.length} duplicate(s)? Originals are kept.`)) {
+              const ok = await confirmAction({
+                title: `Delete ${ids.length} duplicate(s)?`,
+                message: 'The earliest copy of each is kept.',
+                destructive: true,
+              });
+              if (ok) {
                 await deletePhotos(ids);
                 toast('Duplicates removed', 'success');
               }
@@ -396,12 +435,17 @@ function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string;
           toast('Recap generated — tweak and export ✨', 'success');
           go('editor');
         } else if (action === 'rename') {
-          const name = prompt('Rename album:');
+          const name = await promptText({ title: 'Rename album', confirmLabel: 'Rename' });
           if (name?.trim()) await db.albums.update(albumId, { name: name.trim() });
         } else if (action === 'merge') {
           const others = albums.filter((a) => a.id !== albumId);
           if (!others.length) return toast('No other album to merge into', 'error');
-          const name = prompt(`Merge this album into:\n${others.map((a) => `· ${a.name}`).join('\n')}`);
+          const name = await promptText({
+            title: 'Merge album into',
+            message: `Type the target album name:\n${others.map((a) => `· ${a.name}`).join('\n')}`,
+            placeholder: 'Album name',
+            confirmLabel: 'Merge',
+          });
           const target = others.find((a) => a.name.toLowerCase() === name?.trim().toLowerCase());
           if (target) {
             await mergeAlbums(albumId, target.id);
@@ -409,7 +453,12 @@ function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string;
             toast('Albums merged', 'success');
           }
         } else if (action === 'delete') {
-          if (confirm('Delete this album AND all photos in it?')) {
+          const ok = await confirmAction({
+            title: 'Delete album?',
+            message: 'This deletes the album AND all photos inside it.',
+            destructive: true,
+          });
+          if (ok) {
             await deleteAlbum(albumId);
             setAlbum(null);
           }
@@ -518,9 +567,13 @@ function StorageSheet({ onClose }: { onClose: () => void }) {
           <button
             className="btn-soft flex-1 text-red-500"
             onClick={async () => {
-              if (
-                confirm('Delete EVERYTHING — all albums, photos, projects and stickers? This cannot be undone.')
-              ) {
+              const ok = await confirmAction({
+                title: 'Erase all data?',
+                message: 'Deletes ALL albums, photos, projects and stickers on this device. This cannot be undone.',
+                confirmLabel: 'Erase everything',
+                destructive: true,
+              });
+              if (ok) {
                 // close the open project FIRST — otherwise autosave writes it
                 // right back into the freshly-cleared projects table
                 useProjectStore.getState().closeProject();

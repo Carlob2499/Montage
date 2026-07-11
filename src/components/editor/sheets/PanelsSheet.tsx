@@ -1,6 +1,7 @@
 import Sheet from '../../shared/Sheet';
 import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
+import { confirmAction } from '../../../state/dialogStore';
 import { Slider } from './TextSheet';
 import { layerBBox } from '../../../lib/renderer';
 import { reorderPanels, panelsCovered, seamsCrossed } from '../../../lib/slicer';
@@ -66,9 +67,14 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
     });
   };
 
-  const deletePanel = (at: number) => {
+  const deletePanel = async (at: number) => {
     if (doc.panelCount <= 1) return;
-    if (!confirm(`Delete panel ${at + 1}? Layers inside it are removed.`)) return;
+    const ok = await confirmAction({
+      title: `Delete panel ${at + 1}?`,
+      message: 'Layers inside this panel are removed.',
+      destructive: true,
+    });
+    if (!ok) return;
     store.commit((d) => {
       const captions = d.captions.filter((_, i) => i !== at);
       const keep = d.layers.filter((l) => {
@@ -128,7 +134,7 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
                   <button
                     className="btn-ghost px-1.5 py-1 text-xs text-red-500"
                     disabled={doc.panelCount <= 1}
-                    onClick={() => deletePanel(i)}
+                    onClick={() => void deletePanel(i)}
                   >
                     ✕
                   </button>

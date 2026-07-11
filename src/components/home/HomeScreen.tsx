@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, uid } from '../../db/db';
 import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
+import { confirmAction } from '../../state/dialogStore';
 import { downloadBlob, slug } from '../../lib/exporter';
 import { normalizeProjectDoc } from '../../lib/projectSchema';
 import type { PanelAspect, ProjectDoc, ProjectMode } from '../../types';
@@ -32,7 +33,12 @@ export default function HomeScreen() {
   };
 
   const remove = async (doc: ProjectDoc) => {
-    if (!confirm(`Delete project "${doc.name}"? Photos stay in your library.`)) return;
+    const ok = await confirmAction({
+      title: `Delete "${doc.name}"?`,
+      message: 'The project is removed. Photos stay in your library.',
+      destructive: true,
+    });
+    if (!ok) return;
     await db.projects.delete(doc.id);
   };
 

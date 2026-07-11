@@ -5,6 +5,7 @@ import { validateTemplateLibrary, TEMPLATE_CATEGORIES } from '../../../lib/templ
 import { applyTemplate, applyStructuredGrid, reshuffleLayout } from '../canvasActions';
 import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
+import { confirmAction } from '../../../state/dialogStore';
 import type { TemplateCategory, TemplateDef } from '../../../types';
 
 export default function TemplatesSheet({ onClose }: { onClose: () => void }) {
@@ -13,10 +14,13 @@ export default function TemplatesSheet({ onClose }: { onClose: () => void }) {
   const { valid } = useMemo(() => validateTemplateLibrary(TEMPLATES), []);
   const shown = valid.filter((t) => category === 'all' || t.category === category);
 
-  const apply = (t: TemplateDef) => {
-    const replace = confirm(
-      `Apply "${t.name}" (${t.panels} panel${t.panels > 1 ? 's' : ''})?\n\nOK = replace current layers\nCancel = keep them and add the template on top`,
-    );
+  const apply = async (t: TemplateDef) => {
+    const replace = await confirmAction({
+      title: `Apply "${t.name}"?`,
+      message: `${t.panels} panel${t.panels > 1 ? 's' : ''}. Replace your current layers, or add this on top of them?`,
+      confirmLabel: 'Replace layers',
+      cancelLabel: 'Add on top',
+    });
     applyTemplate(t, replace);
     toast(`Applied ${t.name} — tap a cell to fill it`, 'success');
     onClose();
@@ -70,7 +74,7 @@ export default function TemplatesSheet({ onClose }: { onClose: () => void }) {
             <button
               key={t.id}
               className="surface overflow-hidden rounded-xl text-left transition-transform active:scale-95"
-              onClick={() => apply(t)}
+              onClick={() => void apply(t)}
             >
               <TemplatePreview template={t} />
               <div className="px-2.5 py-2">

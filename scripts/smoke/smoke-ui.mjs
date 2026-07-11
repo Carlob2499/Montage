@@ -20,10 +20,12 @@ console.log('✓ editor canvas mounts');
 
 await page.click('text=Layouts');
 await page.waitForSelector('text=Horizon Line');
-page.once('dialog', (d) => d.accept());
 await page.click('text=Horizon Line');
+// in-app confirm dialog (not native) — "Replace layers"
+await page.waitForSelector('[data-testid="dialog-confirm"]', { timeout: 5000 });
+await page.click('[data-testid="dialog-confirm"]');
 await page.waitForTimeout(500);
-console.log('✓ template applied');
+console.log('✓ template applied via in-app dialog');
 
 await page.click('span:text-is("Text")');
 await page.waitForSelector('textarea');
@@ -57,10 +59,12 @@ console.log('✓ export sheet renders');
 await page.click('button[aria-label="Close"]');
 await page.click('header button >> nth=0');
 await page.waitForSelector('text=+ New project');
-if (!(await page.locator('text=Smoke Test').count())) {
-  errors.push('project missing from home list');
-} else {
+// the projects live-query resolves a tick after Home mounts — wait for it
+try {
+  await page.waitForSelector('text=Smoke Test', { timeout: 5000 });
   console.log('✓ project persisted to home list');
+} catch {
+  errors.push('project missing from home list');
 }
 
 await browser.close();

@@ -9,7 +9,10 @@ export default function Toasts() {
       {toasts.map((t) => (
         <button
           key={t.id}
-          onClick={() => dismiss(t.id)}
+          onClick={() => {
+            if (t.onAction) t.onAction();
+            else dismiss(t.id);
+          }}
           className={`pointer-events-auto max-w-md rounded-xl px-4 py-2.5 text-sm font-medium text-white shadow-lg ${
             t.kind === 'error'
               ? 'bg-red-600'
@@ -19,6 +22,7 @@ export default function Toasts() {
           }`}
         >
           {t.message}
+          {t.onAction && <span className="ml-2 underline underline-offset-2">↻</span>}
         </button>
       ))}
     </div>

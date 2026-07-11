@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import Sheet from '../shared/Sheet';
 import { db } from '../../db/db';
 import { useUIStore } from '../../state/uiStore';
+import { confirmAction } from '../../state/dialogStore';
 import { useBlobImage } from '../../hooks/useBlobUrl';
 import { Slider } from './sheets/TextSheet';
 import { FILTER_PRESETS } from '../../lib/presets';
@@ -114,7 +115,12 @@ export default function PhotoEditSheet({
     const albumPhotos = await db.photos.where('albumId').equals(record.albumId).toArray();
     const others = albumPhotos.filter((p) => p.id !== photoId && p.kind === 'image');
     if (!others.length) return;
-    if (!confirm(`Apply these edits to all ${others.length} other photos in this album?`)) return;
+    const ok = await confirmAction({
+      title: 'Apply to whole album?',
+      message: `Copy these edits onto all ${others.length} other photos in this album.`,
+      confirmLabel: 'Apply to all',
+    });
+    if (!ok) return;
     for (const p of others) {
       const existing = await db.edits.get(p.id);
       await db.edits.put({

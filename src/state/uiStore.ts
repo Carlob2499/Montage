@@ -20,6 +20,15 @@ export interface Toast {
   id: number;
   message: string;
   kind: 'info' | 'error' | 'success';
+  /** sticky toasts don't auto-dismiss (e.g. "update available") */
+  sticky?: boolean;
+  /** tapping the toast runs this instead of dismissing */
+  onAction?: () => void;
+}
+
+export interface ToastOptions {
+  sticky?: boolean;
+  onAction?: () => void;
 }
 
 interface UIState {
@@ -39,7 +48,7 @@ interface UIState {
   setAlbum: (id: string | null) => void;
   openSheet: (sheet: EditorSheet) => void;
   closeSheet: () => void;
-  toast: (message: string, kind?: Toast['kind']) => void;
+  toast: (message: string, kind?: Toast['kind'], opts?: ToastOptions) => void;
   dismissToast: (id: number) => void;
   setPickerTarget: (t: UIState['pickerTarget']) => void;
   setCopiedStack: (photoId: string | null) => void;
@@ -72,12 +81,14 @@ export const useUIStore = create<UIState>((set) => ({
   setAlbum: (id) => set({ activeAlbumId: id }),
   openSheet: (sheet) => set({ sheet }),
   closeSheet: () => set({ sheet: 'none', pickerTarget: null }),
-  toast: (message, kind = 'info') => {
+  toast: (message, kind = 'info', opts) => {
     const id = ++toastId;
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind }] }));
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    }, 3500);
+    set((s) => ({ toasts: [...s.toasts, { id, message, kind, ...opts }] }));
+    if (!opts?.sticky) {
+      setTimeout(() => {
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+      }, 3500);
+    }
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setPickerTarget: (t) => set({ pickerTarget: t }),

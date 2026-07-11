@@ -5,7 +5,7 @@ import { ensurePreview } from './browser.mjs';
 
 const stop = await ensurePreview();
 let failed = false;
-for (const suite of ['smoke-ui.mjs', 'smoke-pipeline.mjs']) {
+for (const suite of ['smoke-ui.mjs', 'smoke-pipeline.mjs', 'smoke-dialogs.mjs']) {
   console.log(`\n=== ${suite} ===`);
   const res = spawnSync('node', [`scripts/smoke/${suite}`], { stdio: 'inherit' });
   if (res.status !== 0) failed = true;

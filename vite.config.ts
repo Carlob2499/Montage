@@ -10,7 +10,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' (not 'autoUpdate') so onNeedRefresh fires and we can show a
+      // visible "reload to update" toast — critical so shipped fixes actually
+      // load on installed home-screen PWAs instead of running a stale bundle.
+      registerType: 'prompt',
       includeAssets: ['icons/icon.svg'],
       // custom SW: workbox precache + Web Share Target inbox
       strategies: 'injectManifest',
