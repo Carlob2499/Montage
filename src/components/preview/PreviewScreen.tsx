@@ -13,7 +13,7 @@ export default function PreviewScreen() {
   const go = useUIStore((s) => s.go);
   const [urls, setUrls] = useState<string[]>([]);
   const [current, setCurrent] = useState(0);
-  const [rendering, setRendering] = useState(true);
+  const [playing, setPlaying] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,7 +21,6 @@ export default function PreviewScreen() {
     let cancelled = false;
     const made: string[] = [];
     (async () => {
-      setRendering(true);
       const resources = await loadResources(doc, true);
       try {
         const count = doc.mode === 'grid' ? doc.panelCount * 3 : doc.panelCount;
@@ -31,7 +30,8 @@ export default function PreviewScreen() {
             doc.mode === 'grid'
               ? renderGridTile(doc, Math.floor(i / 3), i % 3, resources)
               : renderPanel(doc, i, resources);
-          const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+          // crisper preview: 0.92 (was 0.85) — gradients/skin no longer smear
+          const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
           // re-check AFTER the await: unmount cleanup already revoked made[],
           // so a URL created now would leak for the page lifetime
           if (cancelled) break;
@@ -40,7 +40,6 @@ export default function PreviewScreen() {
         }
       } finally {
         releaseResources(resources);
-        if (!cancelled) setRendering(false);
       }
     })();
     return () => {
@@ -49,8 +48,23 @@ export default function PreviewScreen() {
     };
   }, [doc]);
 
+  const total = doc ? (doc.mode === 'grid' ? doc.panelCount * 3 : doc.panelCount) : 0;
+
+  // hands-free autoplay: advance one panel every 1.6s, looping back to start
+  useEffect(() => {
+    if (!playing || !doc || doc.mode !== 'carousel' || total <= 1) return;
+    const id = setInterval(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const w = el.clientWidth;
+      const next = Math.round(el.scrollLeft / w) + 1;
+      const target = next >= total ? 0 : next;
+      el.scrollTo({ left: target * w, behavior: 'smooth' });
+    }, 1600);
+    return () => clearInterval(id);
+  }, [playing, doc, total]);
+
   if (!doc) return null;
-  const total = doc.mode === 'grid' ? doc.panelCount * 3 : doc.panelCount;
 
   return (
     <div className="flex h-full flex-col bg-black text-white">
@@ -66,6 +80,15 @@ export default function PreviewScreen() {
           </div>
         </div>
         <div className="flex-1" />
+        {doc.mode === 'carousel' && total > 1 && (
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm"
+            onClick={() => setPlaying((p) => !p)}
+            aria-label={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? '❚❚' : '▶'}
+          </button>
+        )}
         {doc.mode === 'carousel' && (
           <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium">
             {Math.min(current + 1, total)}/{total}
@@ -89,7 +112,7 @@ export default function PreviewScreen() {
                 {urls[i] ? (
                   <img src={urls[i]} alt={`Panel ${i + 1}`} className="max-h-full w-full object-contain" />
                 ) : (
-                  <div className="text-sm text-white/40">{rendering ? 'Rendering…' : ''}</div>
+                  <div className="h-[70%] w-[86%] animate-pulse rounded-xl bg-gradient-to-br from-white/10 to-white/5" />
                 )}
               </div>
             ))}

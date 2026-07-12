@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Sheet from '../../shared/Sheet';
 import { TEMPLATES } from '../../../templates/templates';
 import { validateTemplateLibrary, TEMPLATE_CATEGORIES } from '../../../lib/templateSchema';
 import { applyTemplate, applyStructuredGrid, reshuffleLayout } from '../canvasActions';
+import { templateThumbnail } from '../../../lib/templateThumbnail';
 import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
 import { confirmAction } from '../../../state/dialogStore';
@@ -91,43 +92,54 @@ export default function TemplatesSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * Real, high-fidelity preview: renders the template through the export
+ * pipeline (gradients, glass, frames, real fonts) with vibrant placeholder
+ * fills, lazily on first view and cached. Falls back to a tinted aspect box
+ * while the thumbnail rasterizes.
+ */
 function TemplatePreview({ template }: { template: TemplateDef }) {
-  // schematic: full canvas drawn at aspect (panels ratio), cells as blocks
-  const ratio = (template.panels * 1080) / 1350;
-  const bg =
+  const [url, setUrl] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const ratio = Math.min((template.panels * 1080) / 1350, 2.6);
+  const bgHint =
     template.background?.kind === 'solid'
       ? template.background.color
-      : template.background?.kind === 'linear'
-        ? `linear-gradient(135deg, ${template.background.from}, ${template.background.to})`
-        : template.background?.kind === 'radial'
-          ? `radial-gradient(circle, ${template.background.from}, ${template.background.to})`
-          : '#e5e5e5';
+      : template.background?.kind === 'linear' || template.background?.kind === 'radial'
+        ? template.background.from
+        : '#e5e5e5';
+
+  useEffect(() => {
+    let alive = true;
+    const el = ref.current;
+    if (!el) return;
+    // render only when the card scrolls into view (94 templates)
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect();
+          void templateThumbnail(template).then((u) => {
+            if (alive) setUrl(u);
+          });
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    io.observe(el);
+    return () => {
+      alive = false;
+      io.disconnect();
+    };
+  }, [template]);
+
   return (
-    <div className="w-full overflow-hidden bg-ink-100 p-2 dark:bg-ink-800">
-      <div
-        className="relative mx-auto w-full rounded"
-        style={{ aspectRatio: `${Math.min(ratio, 2.4)}`, background: bg }}
-      >
-        {template.cells.map((c, i) => (
-          <div
-            key={i}
-            className="absolute rounded-[2px] bg-black/25 dark:bg-white/30"
-            style={{
-              left: `${c.x * 100}%`,
-              top: `${c.y * 100}%`,
-              width: `${c.w * 100}%`,
-              height: `${c.h * 100}%`,
-            }}
-          />
-        ))}
-        {template.panels > 1 &&
-          Array.from({ length: template.panels - 1 }, (_, i) => (
-            <div
-              key={i}
-              className="absolute inset-y-0 border-l border-dashed border-accent-500/70"
-              style={{ left: `${((i + 1) / template.panels) * 100}%` }}
-            />
-          ))}
+    <div ref={ref} className="w-full overflow-hidden bg-ink-100 dark:bg-ink-800">
+      <div className="relative mx-auto w-full" style={{ aspectRatio: `${ratio}`, background: bgHint }}>
+        {url ? (
+          <img src={url} alt={template.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 animate-pulse bg-black/5 dark:bg-white/5" />
+        )}
       </div>
     </div>
   );

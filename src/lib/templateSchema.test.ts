@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateTemplate, validateTemplateLibrary } from './templateSchema';
+import { validateTemplate, validateTemplateLibrary, TEMPLATE_CATEGORIES } from './templateSchema';
 import { TEMPLATES } from '../templates/templates';
 
 const goodTemplate = () => ({
@@ -87,8 +87,8 @@ describe('validateTemplateLibrary', () => {
 });
 
 describe('bundled template library', () => {
-  it('ships at least 25 templates', () => {
-    expect(TEMPLATES.length).toBeGreaterThanOrEqual(25);
+  it('ships a large library', () => {
+    expect(TEMPLATES.length).toBeGreaterThanOrEqual(80);
   });
 
   it('every bundled template passes validation', () => {
@@ -97,19 +97,12 @@ describe('bundled template library', () => {
     expect(valid).toHaveLength(TEMPLATES.length);
   });
 
-  it('covers all seven categories', () => {
+  it('covers every declared category', () => {
     const cats = new Set(TEMPLATES.map((t) => t.category));
-    expect(cats).toEqual(
-      new Set([
-        'travel',
-        'event',
-        'editorial',
-        'minimal',
-        'film-strip',
-        'before-after',
-        'scrapbook',
-      ]),
-    );
+    // every template's category is a known one
+    for (const c of cats) expect(TEMPLATE_CATEGORIES).toContain(c);
+    // and every declared category has at least one template
+    for (const c of TEMPLATE_CATEGORIES) expect(cats.has(c)).toBe(true);
   });
 
   it('scrapbook cells carry valid rotation and frame styles', () => {

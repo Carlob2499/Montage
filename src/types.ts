@@ -233,7 +233,10 @@ export type TemplateCategory =
   | 'minimal'
   | 'film-strip'
   | 'before-after'
-  | 'scrapbook';
+  | 'scrapbook'
+  | 'bold'
+  | 'vibrant'
+  | 'aesthetic';
 
 export interface TemplateCell {
   /** fraction of full canvas width, 0..1 */
@@ -260,6 +263,28 @@ export interface TemplateText {
   color?: string;
   letterSpacing?: number;
   width?: number;
+  /** bundled font family; defaults to Inter */
+  font?: string;
+  /** rotation in degrees */
+  rot?: number;
+  lineHeight?: number;
+  opacity?: number;
+}
+
+/** decorative color/glass card placed by a template (fractions of canvas) */
+export interface TemplateCard {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** any CSS color incl. rgba() */
+  fill: string;
+  /** corner radius px at export scale */
+  r?: number;
+  /** glassmorphism sheen + hairline border */
+  glass?: boolean;
+  rot?: number;
+  opacity?: number;
 }
 
 export interface TemplateDef {
@@ -272,4 +297,8 @@ export interface TemplateDef {
   background?: Background;
   cells: TemplateCell[];
   texts?: TemplateText[];
+  /** decorative cards drawn BELOW cells (backing panels) or above per `cardsOnTop` */
+  cards?: TemplateCard[];
+  /** when true, cards render above photo cells (overlays); default below */
+  cardsOnTop?: boolean;
 }

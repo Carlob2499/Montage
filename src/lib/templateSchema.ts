@@ -14,6 +14,9 @@ export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
   'film-strip',
   'before-after',
   'scrapbook',
+  'bold',
+  'vibrant',
+  'aesthetic',
 ];
 
 export interface ValidationResult {
@@ -93,6 +96,28 @@ export function validateTemplate(raw: unknown): ValidationResult {
         if (!isNum(tx.y) || !inRange(tx.y, 0, 1)) errors.push(`texts[${i}].y: number 0..1 required`);
         if (typeof tx.text !== 'string') errors.push(`texts[${i}].text: string required`);
         if (!isNum(tx.size) || tx.size <= 0) errors.push(`texts[${i}].size: positive number required`);
+        if (tx.rot !== undefined && (!isNum(tx.rot) || Math.abs(tx.rot) > 90))
+          errors.push(`texts[${i}].rot: must be a number within ±90`);
+        if (tx.font !== undefined && typeof tx.font !== 'string')
+          errors.push(`texts[${i}].font: must be a string`);
+      });
+    }
+  }
+
+  if (t.cards !== undefined) {
+    if (!Array.isArray(t.cards)) {
+      errors.push('cards: must be an array when present');
+    } else {
+      (t.cards as unknown[]).forEach((c, i) => {
+        if (typeof c !== 'object' || c === null) {
+          errors.push(`cards[${i}]: must be an object`);
+          return;
+        }
+        const card = c as Record<string, unknown>;
+        for (const key of ['x', 'y', 'w', 'h'] as const) {
+          if (!isNum(card[key])) errors.push(`cards[${i}].${key}: number required`);
+        }
+        if (typeof card.fill !== 'string') errors.push(`cards[${i}].fill: color string required`);
       });
     }
   }

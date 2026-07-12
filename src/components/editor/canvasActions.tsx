@@ -8,7 +8,7 @@ import { useProjectStore } from '../../state/projectStore';
 import { canvasSize } from '../../lib/slicer';
 import { autoLayout, suggestedPanelCount } from '../../lib/autoLayout';
 import type { AutoLayoutStyle } from '../../lib/autoLayout';
-import type { CardLayer, PhotoLayer, PhotoRecord, TemplateDef, TextLayer } from '../../types';
+import type { CardLayer, Layer, PhotoLayer, PhotoRecord, TemplateDef, TextLayer } from '../../types';
 
 type PickerTarget =
   | { kind: 'layer' }
@@ -59,23 +59,21 @@ export function addPhotoLayersToProject(photos: PhotoRecord[], target: PickerTar
 }
 
 /**
- * Apply a template: resizes the project to the template's panel count (if the
- * template is panel-specific), sets its background, and creates placeholder
- * cells + text layers. Existing layers are kept below the new ones unless
- * `replace` is set.
+ * Build the concrete layers for a template at the given canvas px dimensions.
+ * Pure and reused by both applyTemplate and the template-thumbnail renderer.
+ * `makeId` supplies layer ids; `fillPhotoId(i)` optionally assigns a photoId
+ * to cell i (used by previews to render vibrant placeholders).
  */
-export function applyTemplate(template: TemplateDef, replace: boolean): void {
-  const store = useProjectStore.getState();
-  const doc = store.doc;
-  if (!doc) return;
-
-  const panelCount = doc.mode === 'grid' ? doc.panelCount : Math.max(template.panels, 1);
-  const dims = canvasSize({ ...doc, panelCount });
-
+export function buildTemplateLayers(
+  template: TemplateDef,
+  dims: { width: number; height: number },
+  makeId: () => string,
+  fillPhotoId?: (i: number) => string,
+): Layer[] {
   const cellLayers: PhotoLayer[] = template.cells.map((c, i) => ({
-    id: uid(),
+    id: makeId(),
     type: 'photo',
-    photoId: '',
+    photoId: fillPhotoId ? fillPhotoId(i) : '',
     name: `Cell ${i + 1}`,
     x: c.x * dims.width,
     y: c.y * dims.height,
@@ -91,22 +89,57 @@ export function applyTemplate(template: TemplateDef, replace: boolean): void {
   }));
 
   const textLayers: TextLayer[] = (template.texts ?? []).map((t) => ({
-    id: uid(),
+    id: makeId(),
     type: 'text',
     text: t.text,
     x: t.x * dims.width,
     y: t.y * dims.height,
-    rotation: 0,
-    opacity: 1,
-    fontFamily: 'Inter',
+    rotation: t.rot ?? 0,
+    opacity: t.opacity ?? 1,
+    fontFamily: t.font ?? 'Inter',
     fontSize: t.size,
     fontWeight: t.weight ?? 600,
     letterSpacing: t.letterSpacing ?? 0,
-    lineHeight: 1.15,
+    lineHeight: t.lineHeight ?? 1.15,
     fill: t.color ?? '#18181b',
     align: t.align ?? 'left',
     width: t.width ? t.width * dims.width : undefined,
   }));
+
+  const cardLayers: CardLayer[] = (template.cards ?? []).map((c) => ({
+    id: makeId(),
+    type: 'card',
+    x: c.x * dims.width,
+    y: c.y * dims.height,
+    width: c.w * dims.width,
+    height: c.h * dims.height,
+    rotation: c.rot ?? 0,
+    opacity: c.opacity ?? 1,
+    cornerRadius: c.r ?? 0,
+    fill: c.fill,
+    glass: c.glass ?? false,
+  }));
+
+  // z-order: cards default BELOW cells (backing panels); above when cardsOnTop
+  return template.cardsOnTop
+    ? [...cellLayers, ...cardLayers, ...textLayers]
+    : [...cardLayers, ...cellLayers, ...textLayers];
+}
+
+/**
+ * Apply a template: resizes the project to the template's panel count (if the
+ * template is panel-specific), sets its background, and creates placeholder
+ * cells + text layers. Existing layers are kept below the new ones unless
+ * `replace` is set.
+ */
+export function applyTemplate(template: TemplateDef, replace: boolean): void {
+  const store = useProjectStore.getState();
+  const doc = store.doc;
+  if (!doc) return;
+
+  const panelCount = doc.mode === 'grid' ? doc.panelCount : Math.max(template.panels, 1);
+  const dims = canvasSize({ ...doc, panelCount });
+  const templateLayers = buildTemplateLayers(template, dims, uid);
 
   store.commit((d) => ({
     ...d,
@@ -117,7 +150,7 @@ export function applyTemplate(template: TemplateDef, replace: boolean): void {
         : Array.from({ length: panelCount }, (_, i) => d.captions[i] ?? ''),
     background: template.background ?? d.background,
     templateId: template.id,
-    layers: replace ? [...cellLayers, ...textLayers] : [...d.layers, ...cellLayers, ...textLayers],
+    layers: replace ? templateLayers : [...d.layers, ...templateLayers],
   }));
 }
 

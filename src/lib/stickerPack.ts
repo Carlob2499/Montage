@@ -177,7 +177,155 @@ async function doodleHeart(color: string): Promise<Blob> {
   return toPng(canvas);
 }
 
-// --- pack ----------------------------------------------------------------------
+// --- sparkle / confetti ------------------------------------------------------
+
+function fourPointStar(ctx: Ctx, cx: number, cy: number, r: number, color: string): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  const inner = r * 0.22;
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4 - Math.PI / 2;
+    const rad = i % 2 === 0 ? r : inner;
+    const x = cx + Math.cos(a) * rad;
+    const y = cy + Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+async function sparkleTrio(color: string): Promise<Blob> {
+  const { canvas, ctx } = make(360, 200);
+  fourPointStar(ctx, 110, 100, 78, color);
+  fourPointStar(ctx, 250, 70, 46, color);
+  fourPointStar(ctx, 280, 150, 30, color);
+  return toPng(canvas);
+}
+
+async function confetti(seed: number): Promise<Blob> {
+  const { canvas, ctx } = make(480, 480);
+  const rand = seededRandom(seed);
+  const colors = ['#f43f5e', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
+  for (let i = 0; i < 46; i++) {
+    ctx.save();
+    ctx.translate(rand() * 480, rand() * 480);
+    ctx.rotate(rand() * Math.PI);
+    ctx.fillStyle = colors[Math.floor(rand() * colors.length)];
+    const w = 10 + rand() * 14;
+    ctx.fillRect(-w / 2, -w / 4, w, w / 2);
+    ctx.restore();
+  }
+  return toPng(canvas);
+}
+
+async function starburst(color: string): Promise<Blob> {
+  const { canvas, ctx } = make(360, 360);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 12;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 12; i++) {
+    const a = (i * Math.PI) / 6;
+    ctx.beginPath();
+    ctx.moveTo(180 + Math.cos(a) * 70, 180 + Math.sin(a) * 70);
+    ctx.lineTo(180 + Math.cos(a) * 150, 180 + Math.sin(a) * 150);
+    ctx.stroke();
+  }
+  return toPng(canvas);
+}
+
+// --- banners / tabs ----------------------------------------------------------
+
+async function ribbon(fill: string, textColor: string): Promise<Blob> {
+  const w = 620;
+  const h = 200;
+  const { canvas, ctx } = make(w, h);
+  ctx.fillStyle = fill;
+  // main bar
+  ctx.fillRect(40, 60, w - 80, 80);
+  // notched tails
+  ctx.beginPath();
+  ctx.moveTo(40, 60);
+  ctx.lineTo(0, 100);
+  ctx.lineTo(40, 140);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(w - 40, 60);
+  ctx.lineTo(w, 100);
+  ctx.lineTo(w - 40, 140);
+  ctx.closePath();
+  ctx.fill();
+  // subtle inner line
+  ctx.strokeStyle = textColor;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(52, 74, w - 104, 52);
+  return toPng(canvas);
+}
+
+async function speechBubble(fill: string): Promise<Blob> {
+  const { canvas, ctx } = make(420, 340);
+  ctx.fillStyle = fill;
+  const r = 40;
+  const w = 380;
+  const h = 240;
+  ctx.beginPath();
+  ctx.moveTo(20 + r, 20);
+  ctx.arcTo(20 + w, 20, 20 + w, 20 + h, r);
+  ctx.arcTo(20 + w, 20 + h, 20, 20 + h, r);
+  ctx.arcTo(20, 20 + h, 20, 20, r);
+  ctx.arcTo(20, 20, 20 + w, 20, r);
+  ctx.closePath();
+  ctx.fill();
+  // tail
+  ctx.beginPath();
+  ctx.moveTo(120, 20 + h - 4);
+  ctx.lineTo(90, 320);
+  ctx.lineTo(190, 20 + h - 4);
+  ctx.closePath();
+  ctx.fill();
+  return toPng(canvas);
+}
+
+async function badgeBurst(fill: string, ring: string): Promise<Blob> {
+  const { canvas, ctx } = make(340, 340);
+  const cx = 170;
+  const cy = 170;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  for (let i = 0; i < 24; i++) {
+    const a = (i * Math.PI) / 12;
+    const rad = i % 2 === 0 ? 150 : 120;
+    const x = cx + Math.cos(a) * rad;
+    const y = cy + Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = ring;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 96, 0, Math.PI * 2);
+  ctx.stroke();
+  return toPng(canvas);
+}
+
+// --- emoji -------------------------------------------------------------------
+
+/** Render a system emoji glyph to a transparent PNG (color-font dependent). */
+export async function emojiSticker(emoji: string): Promise<Blob> {
+  const size = 256;
+  const { canvas, ctx } = make(size, size);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(size * 0.8)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.fillText(emoji, size / 2, size / 2 + size * 0.04);
+  return toPng(canvas);
+}
+
+// --- packs ---------------------------------------------------------------------
 
 export async function generateStarterPack(): Promise<GeneratedSticker[]> {
   const [
@@ -216,3 +364,43 @@ export async function generateStarterPack(): Promise<GeneratedSticker[]> {
     { name: 'Doodle · heart.png', blob: heart },
   ];
 }
+
+export async function generateSparklePack(): Promise<GeneratedSticker[]> {
+  const [sGold, sWhite, sPink, conf, burstY, burstC] = await Promise.all([
+    sparkleTrio('#facc15'),
+    sparkleTrio('#ffffff'),
+    sparkleTrio('#f472b6'),
+    confetti(7),
+    starburst('#fbbf24'),
+    starburst('#22d3ee'),
+  ]);
+  return [
+    { name: 'Sparkle · gold.png', blob: sGold },
+    { name: 'Sparkle · white.png', blob: sWhite },
+    { name: 'Sparkle · pink.png', blob: sPink },
+    { name: 'Confetti.png', blob: conf },
+    { name: 'Starburst · amber.png', blob: burstY },
+    { name: 'Starburst · cyan.png', blob: burstC },
+  ];
+}
+
+export async function generateBannerPack(): Promise<GeneratedSticker[]> {
+  const [ribRed, ribBlue, bubble, badge] = await Promise.all([
+    ribbon('#e11d48', '#fff1f2'),
+    ribbon('#2563eb', '#eff6ff'),
+    speechBubble('#ffffff'),
+    badgeBurst('#f59e0b', '#78350f'),
+  ]);
+  return [
+    { name: 'Ribbon · red.png', blob: ribRed },
+    { name: 'Ribbon · blue.png', blob: ribBlue },
+    { name: 'Speech bubble.png', blob: bubble },
+    { name: 'Badge burst.png', blob: badge },
+  ];
+}
+
+export const STICKER_PACKS: { key: string; label: string; make: () => Promise<GeneratedSticker[]> }[] = [
+  { key: 'starter', label: '✨ Scrapbook', make: generateStarterPack },
+  { key: 'sparkle', label: '⭐ Sparkle', make: generateSparklePack },
+  { key: 'banner', label: '🎀 Banners', make: generateBannerPack },
+];
