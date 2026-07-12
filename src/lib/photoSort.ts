@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PhotoRecord, SortMode } from '../types';
+import { hammingDistance } from './curation/phash';
 
 /**
  * Sort photos for display. EXIF date-taken is the default; photos without
@@ -31,6 +32,13 @@ export function sortPhotos(photos: PhotoRecord[], mode: SortMode): PhotoRecord[]
       return arr.sort((a, b) => a.dateAdded - b.dateAdded || byId(a, b));
     case 'manual':
       return arr.sort((a, b) => a.order - b.order || byId(a, b));
+    case 'best':
+      // highest curation quality first; unscored photos sink to the bottom
+      return arr.sort((a, b) => {
+        const qa = a.scores?.quality ?? -1;
+        const qb = b.scores?.quality ?? -1;
+        return qb - qa || byId(a, b);
+      });
   }
 }
 
@@ -68,5 +76,27 @@ export function findDuplicates(photos: PhotoRecord[]): Map<string, string> {
     const original = sorted[0];
     for (let i = 1; i < sorted.length; i++) dupes.set(sorted[i].id, original.id);
   }
+
+  // Perceptual tier: catch visual dupes the metadata tier misses (no-EXIF
+  // re-saves, resized/re-encoded copies). Cluster scored photos by phash
+  // hamming distance; the earliest-added copy is the original.
+  const scored = photos.filter((p) => p.scores?.phash && !dupes.has(p.id));
+  const reps: PhotoRecord[] = [];
+  for (const p of scored) {
+    const hash = p.scores!.phash;
+    let matched = false;
+    for (const rep of reps) {
+      if (hammingDistance(hash, rep.scores!.phash) <= PHASH_DUPE_THRESHOLD) {
+        const [orig, dup] = p.dateAdded <= rep.dateAdded ? [p, rep] : [rep, p];
+        dupes.set(dup.id, orig.id);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) reps.push(p);
+  }
   return dupes;
 }
+
+/** phash hamming distance treated as "the same shot" for dedup */
+const PHASH_DUPE_THRESHOLD = 6;

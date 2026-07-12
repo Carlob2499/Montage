@@ -9,7 +9,11 @@ import { useProjectStore } from '../../state/projectStore';
 import { sortPhotos, searchPhotos } from '../../lib/photoSort';
 import { formatBytes } from '../../lib/imageUtils';
 import { useBlobUrl } from '../../hooks/useBlobUrl';
-import type { PhotoRecord, SortMode } from '../../types';
+import { useCurationScan } from '../../hooks/useCurationScan';
+import { scoreMissing } from '../../lib/curation/score';
+import { curateAlbum } from '../../lib/curation/select';
+import { buildAutoMontageDoc } from '../../lib/curation/autoMontage';
+import type { AlbumRecord, PhotoRecord, SortMode, VibeLabel } from '../../types';
 import { addPhotoLayersToProject, applyAutoLayout } from '../editor/canvasActions';
 import PhotoEditSheet from '../editor/PhotoEditSheet';
 
@@ -28,6 +32,14 @@ export default function LibraryScreen() {
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [editPhotoId, setEditPhotoId] = useState<string | null>(null);
   const [showStorage, setShowStorage] = useState(false);
+  const [montagePrep, setMontagePrep] = useState<{
+    album: AlbumRecord;
+    picks: PhotoRecord[];
+    vibe: VibeLabel;
+  } | null>(null);
+  const [montageProgress, setMontageProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   const albums = useLiveQuery(() => db.albums.orderBy('createdAt').toArray(), []);
@@ -43,6 +55,9 @@ export default function LibraryScreen() {
   );
 
   const shown = photos ? searchPhotos(sortPhotos(photos, album?.sortMode ?? 'dateTaken'), query) : [];
+
+  // background-score the open album's photos for curation (quality/vibe/phash)
+  useCurationScan((photos ?? []).filter((p) => p.scores === undefined).map((p) => p.id));
 
   const createAlbum = async () => {
     const name = await promptText({
@@ -60,6 +75,39 @@ export default function LibraryScreen() {
       console.error(err);
       toast('Could not create album — storage may be full or unavailable', 'error');
     }
+  };
+
+  // curate an album into a themed montage draft (scores → curate → pre-flight)
+  const startAutoMontage = async (albumId: string) => {
+    const alb = await db.albums.get(albumId);
+    const pics = await db.photos.where('albumId').equals(albumId).toArray();
+    if (!alb || pics.length < 3) {
+      toast('Add at least 3 photos to auto-create a montage', 'error');
+      return;
+    }
+    setMontageProgress({ done: 0, total: pics.filter((p) => p.scores === undefined).length });
+    try {
+      const scored = await scoreMissing(pics, (done, total) =>
+        setMontageProgress({ done, total }),
+      );
+      const { picks, vibe } = curateAlbum(scored);
+      setMontagePrep({ album: alb, picks, vibe });
+    } catch (err) {
+      console.error(err);
+      toast('Could not analyze this album', 'error');
+    } finally {
+      setMontageProgress(null);
+    }
+  };
+
+  const createMontage = async (vibe: VibeLabel) => {
+    if (!montagePrep) return;
+    const doc = buildAutoMontageDoc(montagePrep.album, montagePrep.picks, vibe, uid);
+    await db.projects.put(doc);
+    useProjectStore.getState().loadProject(doc);
+    setMontagePrep(null);
+    toast('Montage created — tweak and export ✨', 'success');
+    go('editor');
   };
 
   const onFiles = async (files: File[]) => {
@@ -280,12 +328,17 @@ export default function LibraryScreen() {
             value={album.sortMode}
             onChange={(e) => void db.albums.update(album.id, { sortMode: e.target.value as SortMode })}
           >
+            <option value="best">✨ Best shots</option>
             <option value="dateTaken">Date taken</option>
             <option value="fileName">File name</option>
             <option value="dateAdded">Date added</option>
             <option value="manual">Manual</option>
           </select>
-          <AlbumMenu albumId={album.id} albums={albums ?? []} />
+          <AlbumMenu
+            albumId={album.id}
+            albums={albums ?? []}
+            onAutoMontage={startAutoMontage}
+          />
         </div>
       )}
 
@@ -405,11 +458,100 @@ export default function LibraryScreen() {
         <PhotoEditSheet key={editPhotoId} photoId={editPhotoId} onClose={() => setEditPhotoId(null)} />
       )}
       {showStorage && <StorageSheet onClose={() => setShowStorage(false)} />}
+      {montageProgress && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+          <div className="surface rounded-2xl px-6 py-5 text-center">
+            <div className="text-2xl">✨</div>
+            <div className="mt-1 text-sm font-semibold">Analyzing your album…</div>
+            <div className="mt-1 text-xs text-ink-400">
+              {montageProgress.total > 0
+                ? `Scoring ${montageProgress.done}/${montageProgress.total}`
+                : 'Curating the best shots'}
+            </div>
+          </div>
+        </div>
+      )}
+      {montagePrep && (
+        <AutoMontageSheet
+          prep={montagePrep}
+          onCancel={() => setMontagePrep(null)}
+          onCreate={createMontage}
+        />
+      )}
     </div>
   );
 }
 
-function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string; name: string }[] }) {
+const VIBE_LABELS: Record<VibeLabel, string> = {
+  sunwashed: 'Sunwashed',
+  moody: 'Moody',
+  vibrant: 'Vibrant',
+  muted: 'Muted',
+  mono: 'Mono',
+};
+
+function AutoMontageSheet({
+  prep,
+  onCancel,
+  onCreate,
+}: {
+  prep: { album: AlbumRecord; picks: PhotoRecord[]; vibe: VibeLabel };
+  onCancel: () => void;
+  onCreate: (vibe: VibeLabel) => void;
+}) {
+  const [vibe, setVibe] = useState<VibeLabel>(prep.vibe);
+  const vibes: VibeLabel[] = ['sunwashed', 'moody', 'vibrant', 'muted', 'mono'];
+  return (
+    <>
+      <div className="fixed inset-0 z-30 bg-black/30" onClick={onCancel} />
+      <div className="sheet z-40 md:inset-auto md:left-1/2 md:top-1/2 md:w-[440px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl md:border">
+        <div className="space-y-4 p-5">
+          <div>
+            <h3 className="text-lg font-semibold">✨ Auto Montage</h3>
+            <p className="text-sm text-ink-400">
+              Picked <b>{prep.picks.length}</b> best shots from “{prep.album.name}”, spread across
+              your trip. Choose a vibe:
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {vibes.map((v) => (
+              <button
+                key={v}
+                onClick={() => setVibe(v)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  vibe === v
+                    ? 'bg-accent-500 text-white'
+                    : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                }`}
+              >
+                {VIBE_LABELS[v]}
+                {v === prep.vibe ? ' ·detected' : ''}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button className="btn-soft flex-1" onClick={onCancel}>
+              Cancel
+            </button>
+            <button className="btn-primary flex-1" onClick={() => onCreate(vibe)}>
+              Create montage
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function AlbumMenu({
+  albumId,
+  albums,
+  onAutoMontage,
+}: {
+  albumId: string;
+  albums: { id: string; name: string }[];
+  onAutoMontage: (albumId: string) => void;
+}) {
   const toast = useUIStore((s) => s.toast);
   const setAlbum = useUIStore((s) => s.setAlbum);
   const go = useUIStore((s) => s.go);
@@ -420,7 +562,9 @@ function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string;
       onChange={async (e) => {
         const action = e.target.value;
         e.target.value = '';
-        if (action === 'recap') {
+        if (action === 'montage') {
+          onAutoMontage(albumId);
+        } else if (action === 'recap') {
           const album = await db.albums.get(albumId);
           const photos = (await db.photos.where('albumId').equals(albumId).toArray()).filter(
             (p) => p.kind === 'image',
@@ -466,6 +610,7 @@ function AlbumMenu({ albumId, albums }: { albumId: string; albums: { id: string;
       }}
     >
       <option value="">⋯</option>
+      <option value="montage">✨ Auto Montage (AI curate)</option>
       <option value="recap">✨ Generate recap</option>
       <option value="rename">Rename</option>
       <option value="merge">Merge into…</option>
@@ -502,9 +647,26 @@ function PhotoThumb({
       onPointerLeave={() => timer.current && clearTimeout(timer.current)}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {url && <img src={url} alt={photo.fileName} className="h-full w-full object-cover" draggable={false} />}
+      {url && (
+        <img
+          src={url}
+          alt={photo.fileName}
+          className={`h-full w-full object-cover ${
+            photo.scores && photo.scores.quality < 0.3 ? 'opacity-50' : ''
+          }`}
+          draggable={false}
+        />
+      )}
+      {photo.scores && photo.scores.quality >= 0.7 && (
+        <span
+          className="absolute left-1 top-1 rounded bg-amber-400/90 px-1 text-[10px] text-black"
+          title="Top pick"
+        >
+          ★
+        </span>
+      )}
       {photo.kind === 'video' && (
-        <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">▶ video</span>
+        <span className="absolute left-1 top-6 rounded bg-black/60 px-1 text-[10px] text-white">▶ video</span>
       )}
       {photo.duplicateOf && (
         <span className="absolute right-1 top-1 rounded bg-amber-500/90 px-1 text-[10px] text-white">dupe</span>

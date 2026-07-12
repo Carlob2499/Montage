@@ -4,9 +4,39 @@
 // Pure: takes records in, returns a ProjectDoc (caller persists it).
 // ---------------------------------------------------------------------------
 
-import type { AlbumRecord, PhotoRecord, ProjectDoc, TextLayer } from '../types';
+import type {
+  AlbumRecord,
+  Background,
+  FrameStyle,
+  PhotoRecord,
+  ProjectDoc,
+  TextLayer,
+} from '../types';
 import { PANEL_WIDTH, PANEL_HEIGHTS } from '../types';
 import { autoLayout, suggestedPanelCount } from './autoLayout';
+
+/** Optional style overrides so callers (e.g. Auto Montage) can theme the recap. */
+export interface RecapOptions {
+  background?: Background;
+  frameStyle?: FrameStyle;
+  /** layout shuffle seed */
+  seed?: number;
+  /** override the "— recap" name suffix */
+  nameSuffix?: string;
+}
+
+const DEFAULT_BACKGROUND: Background = {
+  kind: 'linear',
+  from: '#2d1b4e',
+  to: '#fcd9a8',
+  angle: 160,
+  stops: [
+    { color: '#1d1436', at: 0 },
+    { color: '#7c3aed', at: 0.45 },
+    { color: '#f472b6', at: 0.78 },
+    { color: '#fcd9a8', at: 1 },
+  ],
+};
 
 export interface RecapStats {
   photoCount: number;
@@ -74,7 +104,11 @@ export function buildRecapDoc(
   album: AlbumRecord,
   photos: PhotoRecord[],
   makeId: () => string,
+  opts: RecapOptions = {},
 ): ProjectDoc {
+  const frameStyle = opts.frameStyle ?? 'polaroid';
+  const background = opts.background ?? DEFAULT_BACKGROUND;
+  const seed = opts.seed ?? 7;
   const stats = computeRecapStats(photos);
   const aspect = '4:5' as const;
   const height = PANEL_HEIGHTS[aspect];
@@ -87,7 +121,7 @@ export function buildRecapDoc(
     photos.map((p) => ({ id: p.id, width: p.width, height: p.height, dateTaken: p.dateTaken })),
     height,
     usablePanels,
-    { style: 'dump', seed: 7, margin: 64, gutter: 28, panelWidth: PANEL_WIDTH },
+    { style: 'dump', seed, margin: 64, gutter: 28, panelWidth: PANEL_WIDTH },
   );
 
   const statLines = [
@@ -186,24 +220,13 @@ export function buildRecapDoc(
 
   return {
     id: makeId(),
-    name: `${album.name} — recap`,
+    name: `${album.name}${opts.nameSuffix ?? ' — recap'}`,
     mode: 'carousel',
     aspect,
     panelWidth: PANEL_WIDTH,
     panelHeight: height,
     panelCount,
-    background: {
-      kind: 'linear',
-      from: '#2d1b4e',
-      to: '#fcd9a8',
-      angle: 160,
-      stops: [
-        { color: '#1d1436', at: 0 },
-        { color: '#7c3aed', at: 0.45 },
-        { color: '#f472b6', at: 0.78 },
-        { color: '#fcd9a8', at: 1 },
-      ],
-    },
+    background,
     layers: [
       ...placed.map((pl) => ({
         id: makeId(),
@@ -219,7 +242,7 @@ export function buildRecapDoc(
         imgScale: 1,
         imgOffsetX: 0,
         imgOffsetY: 0,
-        frameStyle: 'polaroid' as const,
+        frameStyle,
       })),
       ...cover,
       ...outro,

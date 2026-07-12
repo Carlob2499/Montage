@@ -97,8 +97,16 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   old stored stacks automatically + a slider in ADJUSTMENT_DEFS.
 - Web Share flow is two-tap (render → share) because navigator.share must be called
   synchronously inside a user gesture.
+- **On-device curation** (`src/lib/curation/*`, all pure + tested): quality/vibe/phash
+  scores are computed off the 320px THUMB (never originals) and cached unindexed on
+  `PhotoRecord.scores` (no Dexie migration). `useCurationScan` mirrors `useFaceScan`
+  (sequential, scan-once, yields). `curateAlbum` (dedup → quality floor → vibe → greedy MMR
+  diversity) is pure; Auto Montage feeds its picks through `buildAutoMontageDoc` →
+  `buildRecapDoc` (extended with a bg/frame/seed override) and the SAME
+  recap→editor path. Everything here stays 100% offline. Advisory, never destructive —
+  the user always gets an editable draft and can override the detected vibe.
 
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 152 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 178 tests.

@@ -142,4 +142,57 @@ describe('findDuplicates', () => {
     const d = photo({ id: 'd', width: 100, height: 50, byteSize: 555, dateTaken: 43 });
     expect(findDuplicates([a, b, c, d]).size).toBe(0);
   });
+
+  it('flags visual duplicates via phash even without matching metadata', () => {
+    // different byte sizes (re-encode) so the metadata tier misses them
+    const scores = (phash: string) => ({
+      quality: 0.7,
+      sharpness: 0.7,
+      exposure: 0.7,
+      colorfulness: 0.5,
+      phash,
+      palette: [],
+      vibe: 'muted' as const,
+      hue: 0,
+      sat: 0,
+      light: 0.5,
+    });
+    const orig = photo({ id: 'orig', byteSize: 100, dateAdded: 1, scores: scores('ffff0000ffff0000') });
+    const resave = photo({ id: 'resave', byteSize: 250, dateAdded: 2, scores: scores('ffff0000ffff0001') });
+    const other = photo({ id: 'other', byteSize: 300, dateAdded: 3, scores: scores('0000ffff0000ffff') });
+    const map = findDuplicates([orig, resave, other]);
+    expect(map.get('resave')).toBe('orig');
+    expect(map.has('orig')).toBe(false);
+    expect(map.has('other')).toBe(false);
+  });
+});
+
+describe('sortPhotos by best (curation quality)', () => {
+  const withQuality = (id: string, quality: number) =>
+    photo({
+      id,
+      scores: {
+        quality,
+        sharpness: quality,
+        exposure: quality,
+        colorfulness: 0.5,
+        phash: '',
+        palette: [],
+        vibe: 'muted',
+        hue: 0,
+        sat: 0,
+        light: 0.5,
+      },
+    });
+
+  it('orders by quality descending, unscored last', () => {
+    const hi = withQuality('hi', 0.9);
+    const lo = withQuality('lo', 0.2);
+    const unscored = photo({ id: 'unscored' });
+    expect(sortPhotos([lo, unscored, hi], 'best').map((p) => p.id)).toEqual([
+      'hi',
+      'lo',
+      'unscored',
+    ]);
+  });
 });

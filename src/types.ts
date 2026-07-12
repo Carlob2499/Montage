@@ -62,6 +62,33 @@ export interface PhotoRecord {
   /** clip length in seconds (video only) — drives motion export duration */
   duration?: number;
   duplicateOf?: string;
+  /** on-device curation scores (undefined = not scored yet). Unindexed, so
+   *  adding this needs no Dexie migration. */
+  scores?: PhotoScores;
+}
+
+/** color/mood bucket a photo reads as, from its palette */
+export type VibeLabel = 'sunwashed' | 'moody' | 'vibrant' | 'muted' | 'mono';
+
+/** cheap on-device quality + vibe signals, computed from the 320px thumbnail */
+export interface PhotoScores {
+  /** composite pick-worthiness, 0..1 */
+  quality: number;
+  /** 0..1 — Laplacian-variance sharpness (low = blurry) */
+  sharpness: number;
+  /** 0..1 — 1 = well-exposed, penalizes clipped/crushed/flat */
+  exposure: number;
+  /** 0..1 — Hasler–Süsstrunk colorfulness */
+  colorfulness: number;
+  /** 64-bit average-hash as 16 hex chars (near-duplicate detection) */
+  phash: string;
+  /** dominant swatches (hex), most-dominant first */
+  palette: string[];
+  vibe: VibeLabel;
+  /** mean image HSL, each 0..1 (hue 0..1 maps to 0..360°) */
+  hue: number;
+  sat: number;
+  light: number;
 }
 
 export interface AlbumRecord {
@@ -71,7 +98,7 @@ export interface AlbumRecord {
   sortMode: SortMode;
 }
 
-export type SortMode = 'dateTaken' | 'fileName' | 'dateAdded' | 'manual';
+export type SortMode = 'dateTaken' | 'fileName' | 'dateAdded' | 'manual' | 'best';
 
 // --- Non-destructive edits --------------------------------------------------
 
