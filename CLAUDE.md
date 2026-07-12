@@ -89,8 +89,18 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 
 - The service worker is CUSTOM (`src/sw.ts`, vite-plugin-pwa `injectManifest`) — it
   handles the Android share-target inbox. Don't switch back to `generateSW`.
-- Dexie is at version(2) (`styles` table). New tables/indexes = a new version() block,
-  never edit an existing one.
+- Dexie is at version(3) (`snapshots` table). New tables/indexes = a new version() block,
+  never edit an existing one. Booleans aren't valid IndexedDB keys — `PhotoRecord.favorite`
+  is intentionally UNINDEXED (favorites are filtered from the loaded album array).
+- **Persistent revision snapshots** are separate from in-memory undo. `projectStore.save()`
+  (the 30s autosave throttle point) captures a durable snapshot of the whole ProjectDoc JSON
+  (no pixels — layers are photoId refs) via `snapshotProject`, throttled ≥60s and capped 15/
+  project (`src/lib/snapshotPolicy.ts`). `restoreSnapshot` snapshots the current state first
+  (reversible) and round-trips through `normalizeProjectDoc`. The `past`/`future` undo stack
+  is untouched. Prune on project delete (`deleteProjectSnapshots`).
+- **Trip map is offline** (`src/lib/geoMap.ts` `projectPoints`/`clusterPoints`, pure+tested;
+  `TripMap.tsx`) — plots `PhotoRecord.gps` on a canvas with equirectangular projection
+  (cos(meanLat) longitude scaling), NO map tiles/network. Reuses `haversineKm`.
 - `autoLayout` (photo dump / recap) is seeded and pure — 'dump' style must stay seam-safe
   by construction (property test in `autoLayout.test.ts`).
 - New Adjustments fields need: NEUTRAL_ADJUSTMENTS default + `normalizeAdjustments` covers
@@ -109,4 +119,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 178 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 197 tests.

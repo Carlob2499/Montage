@@ -6,7 +6,7 @@ import { importFiles } from '../../db/importPhotos';
 import { useUIStore } from '../../state/uiStore';
 import { promptText, confirmAction } from '../../state/dialogStore';
 import { useProjectStore } from '../../state/projectStore';
-import { sortPhotos, searchPhotos } from '../../lib/photoSort';
+import { sortPhotos, searchPhotos, filterPhotos, availableMonths } from '../../lib/photoSort';
 import { formatBytes } from '../../lib/imageUtils';
 import { useBlobUrl } from '../../hooks/useBlobUrl';
 import { useCurationScan } from '../../hooks/useCurationScan';
@@ -16,6 +16,7 @@ import { buildAutoMontageDoc } from '../../lib/curation/autoMontage';
 import type { AlbumRecord, PhotoRecord, SortMode, VibeLabel } from '../../types';
 import { addPhotoLayersToProject, applyAutoLayout } from '../editor/canvasActions';
 import PhotoEditSheet from '../editor/PhotoEditSheet';
+import TripMap from './TripMap';
 
 export default function LibraryScreen() {
   const go = useUIStore((s) => s.go);
@@ -40,6 +41,10 @@ export default function LibraryScreen() {
   const [montageProgress, setMontageProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
+  const [filterFav, setFilterFav] = useState(false);
+  const [filterLocated, setFilterLocated] = useState(false);
+  const [filterMonth, setFilterMonth] = useState('');
+  const [showMap, setShowMap] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const albums = useLiveQuery(() => db.albums.orderBy('createdAt').toArray(), []);
@@ -54,7 +59,17 @@ export default function LibraryScreen() {
     [activeAlbumId],
   );
 
-  const shown = photos ? searchPhotos(sortPhotos(photos, album?.sortMode ?? 'dateTaken'), query) : [];
+  const months = photos ? availableMonths(photos) : [];
+  const shown = photos
+    ? searchPhotos(
+        filterPhotos(sortPhotos(photos, album?.sortMode ?? 'dateTaken'), {
+          favorite: filterFav || undefined,
+          located: filterLocated || undefined,
+          month: filterMonth || undefined,
+        }),
+        query,
+      )
+    : [];
 
   // background-score the open album's photos for curation (quality/vibe/phash)
   useCurationScan((photos ?? []).filter((p) => p.scores === undefined).map((p) => p.id));
@@ -220,6 +235,20 @@ export default function LibraryScreen() {
     toast(`Moved to ${target.name}`, 'success');
   };
 
+  const batchFavorite = async () => {
+    if (!selected.size) return;
+    const ids = [...selected];
+    // if all selected are already favorited, toggle them off; else favorite all
+    const rows = await db.photos.where('id').anyOf(ids).toArray();
+    const allFav = rows.every((p) => p.favorite);
+    await db.photos
+      .where('id')
+      .anyOf(ids)
+      .modify({ favorite: !allFav });
+    setSelecting(false);
+    setSelected(new Set());
+  };
+
   const batchTag = async () => {
     if (!selected.size) return;
     const tag = await promptText({
@@ -342,6 +371,52 @@ export default function LibraryScreen() {
         </div>
       )}
 
+      {album && (photos?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2">
+          <FilterChip active={filterFav} onClick={() => setFilterFav((v) => !v)}>
+            ♥ Favorites
+          </FilterChip>
+          <FilterChip active={filterLocated} onClick={() => setFilterLocated((v) => !v)}>
+            📍 Located
+          </FilterChip>
+          {months.length > 1 && (
+            <select
+              className={`input-base w-auto py-1 text-xs ${filterMonth ? 'ring-1 ring-accent-500' : ''}`}
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+            >
+              <option value="">All months</option>
+              {months.map((m) => (
+                <option key={m} value={m}>
+                  {monthLabel(m)}
+                </option>
+              ))}
+            </select>
+          )}
+          {(filterFav || filterLocated || filterMonth) && (
+            <button
+              className="text-xs text-ink-400 underline"
+              onClick={() => {
+                setFilterFav(false);
+                setFilterLocated(false);
+                setFilterMonth('');
+              }}
+            >
+              Clear
+            </button>
+          )}
+          {(photos?.some((p) => p.gps) ?? false) && (
+            <button
+              className="rounded-lg bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-600 dark:bg-ink-800 dark:text-ink-300"
+              onClick={() => setShowMap(true)}
+            >
+              📍 Map
+            </button>
+          )}
+          <span className="ml-auto text-xs text-ink-400">{shown.length} shown</span>
+        </div>
+      )}
+
       {dupeCount > 0 && (
         <div className="mx-4 mb-2 flex items-center justify-between rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
           <span>{dupeCount} possible duplicate(s) flagged</span>
@@ -416,6 +491,9 @@ export default function LibraryScreen() {
                 </button>
               </>
             )}
+            <button className="btn-soft" disabled={!selected.size} onClick={() => void batchFavorite()}>
+              ♥ Favorite
+            </button>
             <button className="btn-soft" disabled={!selected.size} onClick={() => void batchTag()}>
               Tag
             </button>
@@ -458,6 +536,7 @@ export default function LibraryScreen() {
         <PhotoEditSheet key={editPhotoId} photoId={editPhotoId} onClose={() => setEditPhotoId(null)} />
       )}
       {showStorage && <StorageSheet onClose={() => setShowStorage(false)} />}
+      {showMap && <TripMap photos={photos ?? []} onClose={() => setShowMap(false)} />}
       {montageProgress && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
           <div className="surface rounded-2xl px-6 py-5 text-center">
@@ -619,6 +698,35 @@ function AlbumMenu({
   );
 }
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function monthLabel(m: string): string {
+  const [y, mo] = m.split('-');
+  return `${MONTH_NAMES[Number(mo) - 1] ?? mo} ${y}`;
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
+        active
+          ? 'bg-accent-500 text-white'
+          : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function PhotoThumb({
   photo,
   selected,
@@ -670,6 +778,24 @@ function PhotoThumb({
       )}
       {photo.duplicateOf && (
         <span className="absolute right-1 top-1 rounded bg-amber-500/90 px-1 text-[10px] text-white">dupe</span>
+      )}
+      {!selecting && (
+        <span
+          role="button"
+          aria-label={photo.favorite ? 'Unfavorite' : 'Favorite'}
+          title={photo.favorite ? 'Unfavorite' : 'Favorite'}
+          className={`absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full text-sm ${
+            photo.favorite ? 'text-rose-400' : 'text-white/70'
+          }`}
+          style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            void db.photos.update(photo.id, { favorite: !photo.favorite });
+          }}
+        >
+          {photo.favorite ? '♥' : '♡'}
+        </span>
       )}
       {photo.tags.length > 0 && (
         <span className="absolute bottom-1 left-1 max-w-[90%] truncate rounded bg-black/50 px-1 text-[10px] text-white">

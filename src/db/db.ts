@@ -10,6 +10,7 @@ import type {
   EditStack,
   PhotoRecord,
   ProjectDoc,
+  SnapshotRecord,
   StickerRecord,
   StyleRecord,
 } from '../types';
@@ -39,6 +40,7 @@ class MontageDB extends Dexie {
   projects!: Table<ProjectDoc, string>;
   stickers!: Table<StickerRow, string>;
   styles!: Table<StyleRecord, string>;
+  snapshots!: Table<SnapshotRecord, string>;
 
   constructor() {
     super('montage-studio');
@@ -55,6 +57,12 @@ class MontageDB extends Dexie {
     // v2: saved style collections
     this.version(2).stores({
       styles: 'id, name, createdAt',
+    });
+    // v3: durable project revision snapshots. `favorite` is an unindexed
+    // field on photos (booleans aren't valid IndexedDB keys, and favorites are
+    // filtered from the already-loaded album array) — so no photos re-declare.
+    this.version(3).stores({
+      snapshots: 'id, projectId, createdAt',
     });
   }
 }
@@ -150,4 +158,51 @@ export async function mergeAlbums(fromId: string, intoId: string): Promise<void>
     await db.photos.where('albumId').equals(fromId).modify({ albumId: intoId });
     await db.albums.delete(fromId);
   });
+}
+
+// --- Project revision snapshots ---------------------------------------------
+
+/** Write a durable snapshot of a project doc, then prune to the newest `max`. */
+export async function snapshotProject(
+  doc: ProjectDoc,
+  label?: string,
+  max = 15,
+): Promise<void> {
+  const snap: SnapshotRecord = {
+    id: uid(),
+    projectId: doc.id,
+    createdAt: Date.now(),
+    label,
+    // structuredClone so later in-memory edits can't mutate the stored copy
+    doc: structuredClone(doc),
+  };
+  await db.snapshots.add(snap);
+  await pruneSnapshots(doc.id, max);
+}
+
+/** All snapshots for a project, newest first. */
+export function listSnapshots(projectId: string): Promise<SnapshotRecord[]> {
+  return db.snapshots
+    .where('projectId')
+    .equals(projectId)
+    .sortBy('createdAt')
+    .then((rows) => rows.reverse());
+}
+
+/** Keep only the newest `max` snapshots for a project. */
+export async function pruneSnapshots(projectId: string, max: number): Promise<void> {
+  const ids = await db.snapshots.where('projectId').equals(projectId).sortBy('createdAt');
+  const excess = ids.length - max;
+  if (excess > 0) {
+    await db.snapshots.bulkDelete(ids.slice(0, excess).map((s) => s.id));
+  }
+}
+
+/** Remove all snapshots for a deleted project. */
+export async function deleteProjectSnapshots(projectId: string): Promise<void> {
+  const ids = (await db.snapshots
+    .where('projectId')
+    .equals(projectId)
+    .primaryKeys()) as string[];
+  await db.snapshots.bulkDelete(ids);
 }

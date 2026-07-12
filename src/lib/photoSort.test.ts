@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { sortPhotos, searchPhotos, findDuplicates } from './photoSort';
+import {
+  sortPhotos,
+  searchPhotos,
+  findDuplicates,
+  filterPhotos,
+  availableMonths,
+  photoMonth,
+} from './photoSort';
 import type { PhotoRecord } from '../types';
 
 let counter = 0;
@@ -194,5 +201,49 @@ describe('sortPhotos by best (curation quality)', () => {
       'lo',
       'unscored',
     ]);
+  });
+});
+
+describe('filterPhotos + months', () => {
+  const jan = photo({ id: 'jan', dateTaken: new Date('2026-01-15').getTime() });
+  const feb = photo({ id: 'feb', dateTaken: new Date('2026-02-10').getTime(), favorite: true });
+  const febGps = photo({
+    id: 'febgps',
+    dateTaken: new Date('2026-02-20').getTime(),
+    gps: { lat: 1, lng: 2 },
+  });
+  const all = [jan, feb, febGps];
+
+  it('photoMonth buckets by YYYY-MM (EXIF, else added)', () => {
+    expect(photoMonth(jan)).toBe('2026-01');
+    expect(photoMonth(photo({ id: 'x', dateTaken: undefined, dateAdded: new Date('2025-12-01').getTime() }))).toBe(
+      '2025-12',
+    );
+  });
+
+  it('availableMonths returns distinct months newest first', () => {
+    expect(availableMonths(all)).toEqual(['2026-02', '2026-01']);
+  });
+
+  it('filters favorites only', () => {
+    expect(filterPhotos(all, { favorite: true }).map((p) => p.id)).toEqual(['feb']);
+  });
+
+  it('filters located only', () => {
+    expect(filterPhotos(all, { located: true }).map((p) => p.id)).toEqual(['febgps']);
+  });
+
+  it('filters by month', () => {
+    expect(filterPhotos(all, { month: '2026-02' }).map((p) => p.id)).toEqual(['feb', 'febgps']);
+  });
+
+  it('ANDs multiple filters', () => {
+    expect(filterPhotos(all, { month: '2026-02', located: true }).map((p) => p.id)).toEqual([
+      'febgps',
+    ]);
+  });
+
+  it('no filters returns everything', () => {
+    expect(filterPhotos(all, {})).toHaveLength(3);
   });
 });

@@ -62,6 +62,8 @@ export interface PhotoRecord {
   /** clip length in seconds (video only) — drives motion export duration */
   duration?: number;
   duplicateOf?: string;
+  /** user-marked keeper (undefined = not favorited) */
+  favorite?: boolean;
   /** on-device curation scores (undefined = not scored yet). Unindexed, so
    *  adding this needs no Dexie migration. */
   scores?: PhotoScores;
@@ -266,6 +268,17 @@ export interface StickerRecord {
   id: string;
   name: string;
   dateAdded: number;
+}
+
+/** durable revision snapshot of a project (survives reload) */
+export interface SnapshotRecord {
+  id: string;
+  projectId: string;
+  createdAt: number;
+  /** short human label, e.g. "before restore" */
+  label?: string;
+  /** the whole ProjectDoc as it was — small JSON, no pixel data */
+  doc: ProjectDoc;
 }
 
 /** saved style collection: keeps a feed's look consistent across projects */

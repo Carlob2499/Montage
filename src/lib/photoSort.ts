@@ -42,6 +42,36 @@ export function sortPhotos(photos: PhotoRecord[], mode: SortMode): PhotoRecord[]
   }
 }
 
+export interface PhotoFilter {
+  /** only favorited photos */
+  favorite?: boolean;
+  /** only photos with GPS coordinates */
+  located?: boolean;
+  /** YYYY-MM bucket (from dateTaken, falling back to dateAdded) */
+  month?: string;
+}
+
+/** the YYYY-MM month a photo belongs to (EXIF date, else import date) */
+export function photoMonth(p: PhotoRecord): string {
+  const d = new Date(p.dateTaken ?? p.dateAdded);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** distinct YYYY-MM buckets present in the set, newest first */
+export function availableMonths(photos: PhotoRecord[]): string[] {
+  return [...new Set(photos.map(photoMonth))].sort().reverse();
+}
+
+/** Apply favorites / located / month filters (all optional, ANDed). */
+export function filterPhotos(photos: PhotoRecord[], filter: PhotoFilter): PhotoRecord[] {
+  return photos.filter((p) => {
+    if (filter.favorite && !p.favorite) return false;
+    if (filter.located && !p.gps) return false;
+    if (filter.month && photoMonth(p) !== filter.month) return false;
+    return true;
+  });
+}
+
 /** Case-insensitive search across tags and file names. */
 export function searchPhotos(photos: PhotoRecord[], query: string): PhotoRecord[] {
   const q = query.trim().toLowerCase();

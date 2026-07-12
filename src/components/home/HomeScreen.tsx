@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, uid } from '../../db/db';
+import { db, deleteProjectSnapshots, uid } from '../../db/db';
 import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
 import { confirmAction } from '../../state/dialogStore';
@@ -41,6 +41,7 @@ export default function HomeScreen() {
     });
     if (!ok) return;
     await db.projects.delete(doc.id);
+    await deleteProjectSnapshots(doc.id);
   };
 
   const exportJson = (doc: ProjectDoc) => {

@@ -11,6 +11,7 @@ import LayersSheet from './sheets/LayersSheet';
 import CaptionsSheet from './sheets/CaptionsSheet';
 import StickersSheet from './sheets/StickersSheet';
 import ExportSheet from './sheets/ExportSheet';
+import HistorySheet from './sheets/HistorySheet';
 import PhotoEditSheet from './PhotoEditSheet';
 import { addTextLayer } from './canvasActions';
 import { layerBBox } from '../../lib/renderer';
@@ -97,6 +98,14 @@ export default function EditorScreen() {
           </div>
         </div>
         <UndoRedo />
+        <button
+          className="btn-ghost px-2"
+          title="Version history"
+          aria-label="Version history"
+          onClick={() => openSheet('history')}
+        >
+          🕓
+        </button>
         {hasVideo && (
           <button
             className="btn-ghost px-2"
@@ -146,6 +155,7 @@ export default function EditorScreen() {
       {sheet === 'captions' && <CaptionsSheet onClose={closeSheet} />}
       {sheet === 'stickers' && <StickersSheet onClose={closeSheet} />}
       {sheet === 'export' && <ExportSheet onClose={closeSheet} />}
+      {sheet === 'history' && <HistorySheet onClose={closeSheet} />}
       {sheet === 'photoEdit' && selectedPhotoLayer?.type === 'photo' && (
         <PhotoEditSheet
           key={selectedPhotoLayer.photoId}

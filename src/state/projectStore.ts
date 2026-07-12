@@ -3,12 +3,24 @@
 // ---------------------------------------------------------------------------
 
 import { create } from 'zustand';
-import { db, uid } from '../db/db';
-import type { Background, Layer, PanelAspect, ProjectDoc, ProjectMode } from '../types';
+import { db, snapshotProject, uid } from '../db/db';
+import type {
+  Background,
+  Layer,
+  PanelAspect,
+  ProjectDoc,
+  ProjectMode,
+  SnapshotRecord,
+} from '../types';
 import { geometryOf } from '../lib/slicer';
 import { resizeDoc } from '../lib/resize';
+import { normalizeProjectDoc } from '../lib/projectSchema';
+import { MAX_SNAPSHOTS, shouldSnapshot } from '../lib/snapshotPolicy';
 
 const HISTORY_LIMIT = 50;
+
+// per-project time of the last durable snapshot (module-scoped runtime state)
+const lastSnapshotAt = new Map<string, number>();
 
 interface ProjectState {
   doc: ProjectDoc | null;
@@ -31,6 +43,8 @@ interface ProjectState {
   closeProject: () => void;
   /** re-flow the whole doc to a new panel size (one undo step) */
   resizeProject: (panelWidth: number, panelHeight: number, aspect: string) => void;
+  /** revert the project to a durable snapshot (snapshots current first) */
+  restoreSnapshot: (snap: SnapshotRecord) => void;
 
   /** Replace the doc, pushing the pre-edit state onto the undo stack. */
   commit: (updater: (doc: ProjectDoc) => ProjectDoc) => void;
@@ -123,6 +137,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   resizeProject: (panelWidth, panelHeight, aspect) => {
     get().commit((doc) => resizeDoc(doc, panelWidth, panelHeight, aspect));
     get().select([]);
+  },
+
+  restoreSnapshot: (snap) => {
+    const { doc } = get();
+    // snapshot the current state first so the restore is itself reversible
+    if (doc) void snapshotProject(doc, 'before restore');
+    // round-trip through the normalizer so a hand-edited/old snapshot can't
+    // white-screen the editor, and hydrate geometry for very old docs
+    const restored = normalizeProjectDoc(structuredClone(snap.doc));
+    set({
+      doc: { ...restored, ...geometryOf(restored), updatedAt: Date.now() },
+      past: [],
+      future: [],
+      selectedIds: [],
+      previewBase: null,
+      dirty: true,
+    });
+    void db.projects.put(get().doc as ProjectDoc);
   },
 
   commit: (updater) => {
@@ -250,6 +282,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await db.projects.put({ ...doc, updatedAt: Date.now() });
     // only clear the flag if nothing changed while the write was in flight
     if (get().doc === doc) set({ dirty: false });
+    // durable revision snapshot, throttled per project (in-memory undo is
+    // separate and untouched). Fire-and-forget — never blocks the save.
+    const now = Date.now();
+    if (shouldSnapshot(lastSnapshotAt.get(doc.id), now)) {
+      lastSnapshotAt.set(doc.id, now);
+      void snapshotProject(doc, undefined, MAX_SNAPSHOTS);
+    }
   },
 
   markSaved: () => set({ dirty: false }),
