@@ -52,7 +52,7 @@ describe('autoLayout dump style', () => {
   it('never lets a photo touch a slice line (seam-safe)', () => {
     for (const seed of [1, 2, 3, 4, 5]) {
       const placed = autoLayout(photos, 1350, 5, { ...OPTS, style: 'dump', seed });
-      const seams = seamPositions(5);
+      const seams = seamPositions(5, 1080);
       for (const p of placed) {
         // small allowance for rotation overhang: jitter rotation ≤4°,
         // bbox growth < 8% of the diagonal — SEAM_SAFE covers it
@@ -92,7 +92,7 @@ describe('autoLayout panorama style', () => {
     expect(first.x).toBeCloseTo(48, 0);
     expect(last.x + last.width).toBeCloseTo(3 * 1080 - 48, 0);
     // panorama style deliberately flows THROUGH slice lines
-    const seams = seamPositions(3);
+    const seams = seamPositions(3, 1080);
     const crossing = placed.some((p) => seams.some((s) => p.x < s && p.x + p.width > s));
     expect(crossing).toBe(true);
   });

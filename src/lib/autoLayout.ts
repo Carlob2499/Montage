@@ -29,6 +29,8 @@ export interface AutoLayoutOptions {
   seed: number;
   margin: number;
   gutter: number;
+  /** per-panel width in px (defaults to 1080 for standard carousels) */
+  panelWidth?: number;
 }
 
 /** distance a photo keeps from slice lines in dump/clean styles */
@@ -93,6 +95,7 @@ export function autoLayout(
     return panoramaRow(ordered, canvasHeight, panelCount, opts);
   }
 
+  const panelWidth = opts.panelWidth ?? PANEL_WIDTH;
   const placed: PlacedPhoto[] = [];
   const perPanel = Math.ceil(ordered.length / panelCount);
   const jitter = opts.style === 'dump';
@@ -101,8 +104,8 @@ export function autoLayout(
     const batch = ordered.slice(p * perPanel, (p + 1) * perPanel);
     if (batch.length === 0) break;
     const { rows, cols } = gridFor(batch.length);
-    const innerX = p * PANEL_WIDTH + SEAM_SAFE + opts.margin / 2;
-    const innerW = PANEL_WIDTH - 2 * SEAM_SAFE - opts.margin;
+    const innerX = p * panelWidth + SEAM_SAFE + opts.margin / 2;
+    const innerW = Math.max(1, panelWidth - 2 * SEAM_SAFE - opts.margin);
     const innerY = opts.margin;
     const innerH = canvasHeight - 2 * opts.margin;
     const cellW = (innerW - (cols - 1) * opts.gutter) / cols;
@@ -141,7 +144,7 @@ function panoramaRow(
   panelCount: number,
   opts: AutoLayoutOptions,
 ): PlacedPhoto[] {
-  const canvasW = panelCount * PANEL_WIDTH;
+  const canvasW = panelCount * (opts.panelWidth ?? PANEL_WIDTH);
   const rowH = canvasHeight - 2 * opts.margin;
   // widths at common height, then scale everything to fill exactly
   const naturalW = ordered.map((p) => (p.width / p.height) * rowH);

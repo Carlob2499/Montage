@@ -5,6 +5,8 @@
 import { create } from 'zustand';
 import { db, uid } from '../db/db';
 import type { Background, Layer, PanelAspect, ProjectDoc, ProjectMode } from '../types';
+import { geometryOf } from '../lib/slicer';
+import { resizeDoc } from '../lib/resize';
 
 const HISTORY_LIMIT = 50;
 
@@ -17,9 +19,18 @@ interface ProjectState {
   /** doc as it was before the current preview() run started (null = no preview active) */
   previewBase: ProjectDoc | null;
 
-  newProject: (name: string, mode: ProjectMode, aspect: PanelAspect, panelCount: number) => ProjectDoc;
+  newProject: (
+    name: string,
+    mode: ProjectMode,
+    aspect: PanelAspect,
+    panelCount: number,
+    panelWidth: number,
+    panelHeight: number,
+  ) => ProjectDoc;
   loadProject: (doc: ProjectDoc) => void;
   closeProject: () => void;
+  /** re-flow the whole doc to a new panel size (one undo step) */
+  resizeProject: (panelWidth: number, panelHeight: number, aspect: string) => void;
 
   /** Replace the doc, pushing the pre-edit state onto the undo stack. */
   commit: (updater: (doc: ProjectDoc) => ProjectDoc) => void;
@@ -56,16 +67,22 @@ export function makeProjectDoc(
   mode: ProjectMode,
   aspect: PanelAspect,
   panelCount: number,
+  panelWidth = 1080,
+  panelHeight = 1350,
 ): ProjectDoc {
+  const grid = mode === 'grid';
   return {
     id: uid(),
     name,
     mode,
-    aspect: mode === 'grid' ? '1:1' : aspect,
+    aspect: grid ? '1:1' : aspect,
+    // grid tiles are always square 1080; carousel uses the requested size
+    panelWidth: grid ? 1080 : panelWidth,
+    panelHeight: grid ? 1080 : panelHeight,
     panelCount,
     background: { kind: 'solid', color: '#ffffff' },
     layers: [],
-    captions: Array.from({ length: mode === 'grid' ? 1 : panelCount }, () => ''),
+    captions: Array.from({ length: grid ? 1 : panelCount }, () => ''),
     gutter: 24,
     margin: 48,
     createdAt: Date.now(),
@@ -81,18 +98,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   dirty: false,
   previewBase: null,
 
-  newProject: (name, mode, aspect, panelCount) => {
-    const doc = makeProjectDoc(name, mode, aspect, panelCount);
+  newProject: (name, mode, aspect, panelCount, panelWidth, panelHeight) => {
+    const doc = makeProjectDoc(name, mode, aspect, panelCount, panelWidth, panelHeight);
     set({ doc, past: [], future: [], selectedIds: [], dirty: true, previewBase: null });
     void db.projects.put(doc);
     return doc;
   },
 
+  // hydrate geometry for docs saved before panelWidth/panelHeight existed —
+  // this is the single funnel for DB, recap, and import loads
   loadProject: (doc) =>
-    set({ doc, past: [], future: [], selectedIds: [], dirty: false, previewBase: null }),
+    set({
+      doc: { ...doc, ...geometryOf(doc) },
+      past: [],
+      future: [],
+      selectedIds: [],
+      dirty: false,
+      previewBase: null,
+    }),
 
   closeProject: () =>
     set({ doc: null, past: [], future: [], selectedIds: [], dirty: false, previewBase: null }),
+
+  resizeProject: (panelWidth, panelHeight, aspect) => {
+    get().commit((doc) => resizeDoc(doc, panelWidth, panelHeight, aspect));
+    get().select([]);
+  },
 
   commit: (updater) => {
     const { doc, past, previewBase } = get();

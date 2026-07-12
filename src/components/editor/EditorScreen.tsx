@@ -167,7 +167,7 @@ function SeamSafetyBanner() {
   for (const layer of doc.layers) {
     if (layer.type === 'text') {
       const bbox = layerBBox(layer);
-      if (suggestNudge(bbox, doc.panelCount) !== 0) {
+      if (suggestNudge(bbox, doc.panelCount, doc.panelWidth) !== 0) {
         warned.push({ layerId: layer.id, bbox, kind: 'text' });
       }
       continue;
@@ -184,7 +184,7 @@ function SeamSafetyBanner() {
     }
     if (!rects.length) continue;
     const bbox = unionRects(rects);
-    if (suggestNudge(bbox, doc.panelCount) !== 0) {
+    if (suggestNudge(bbox, doc.panelCount, doc.panelWidth) !== 0) {
       warned.push({ layerId: layer.id, bbox, kind: layer.isSubject ? 'subject' : 'face' });
     }
   }
@@ -192,14 +192,14 @@ function SeamSafetyBanner() {
   if (warned.length === 0) return null;
 
   const fixable = warned.filter((w) => {
-    const dx = suggestNudge(w.bbox, doc.panelCount);
+    const dx = suggestNudge(w.bbox, doc.panelCount, doc.panelWidth);
     return dx !== null && dx !== 0;
   });
 
   const fixAll = () => {
     const moves = new Map<string, number>();
     for (const w of fixable) {
-      const dx = suggestNudge(w.bbox, doc.panelCount, SEAM_MARGIN);
+      const dx = suggestNudge(w.bbox, doc.panelCount, doc.panelWidth, SEAM_MARGIN);
       if (dx) moves.set(w.layerId, dx);
     }
     if (!moves.size) return;

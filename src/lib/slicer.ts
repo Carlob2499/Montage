@@ -1,10 +1,14 @@
 // ---------------------------------------------------------------------------
 // Slicing math: mapping between the continuous canvas and exported panels.
 // Pure functions — unit tested in slicer.test.ts.
+//
+// Geometry is per-doc (panelWidth/panelHeight), NOT a global constant, so the
+// canvas can be any aspect ratio or custom size. Every function that needs
+// panel dimensions takes them explicitly and stays pure.
 // ---------------------------------------------------------------------------
 
 import { PANEL_WIDTH, PANEL_HEIGHTS } from '../types';
-import type { PanelAspect, ProjectDoc } from '../types';
+import type { ProjectDoc } from '../types';
 
 export interface Rect {
   x: number;
@@ -13,35 +17,45 @@ export interface Rect {
   height: number;
 }
 
+export interface Geometry {
+  panelWidth: number;
+  panelHeight: number;
+}
+
+/**
+ * Resolve per-panel geometry, tolerant of OLD docs saved before panelWidth/
+ * panelHeight existed (falls back to the aspect→PANEL_HEIGHTS lookup).
+ */
+export function geometryOf(
+  doc: Pick<ProjectDoc, 'aspect' | 'panelWidth' | 'panelHeight'>,
+): Geometry {
+  return {
+    panelWidth: doc.panelWidth ?? PANEL_WIDTH,
+    panelHeight: doc.panelHeight ?? PANEL_HEIGHTS[doc.aspect] ?? 1350,
+  };
+}
+
 /** Full canvas pixel size for a project. */
-export function canvasSize(doc: Pick<ProjectDoc, 'mode' | 'aspect' | 'panelCount'>): {
-  width: number;
-  height: number;
-} {
+export function canvasSize(
+  doc: Pick<ProjectDoc, 'mode' | 'aspect' | 'panelWidth' | 'panelHeight' | 'panelCount'>,
+): { width: number; height: number } {
+  const { panelWidth, panelHeight } = geometryOf(doc);
   if (doc.mode === 'grid') {
     // profile-grid planner: 3 columns × N rows of square tiles
-    return { width: PANEL_WIDTH * 3, height: PANEL_WIDTH * doc.panelCount };
+    return { width: panelWidth * 3, height: panelWidth * doc.panelCount };
   }
-  return {
-    width: PANEL_WIDTH * doc.panelCount,
-    height: PANEL_HEIGHTS[doc.aspect],
-  };
+  return { width: panelWidth * doc.panelCount, height: panelHeight };
 }
 
 /** Canvas-space rect of carousel panel `index` (0-based). */
-export function panelRect(aspect: PanelAspect, index: number): Rect {
-  return {
-    x: index * PANEL_WIDTH,
-    y: 0,
-    width: PANEL_WIDTH,
-    height: PANEL_HEIGHTS[aspect],
-  };
+export function panelRect(panelWidth: number, panelHeight: number, index: number): Rect {
+  return { x: index * panelWidth, y: 0, width: panelWidth, height: panelHeight };
 }
 
 /** X positions of the internal seams (slice lines) between panels. */
-export function seamPositions(panelCount: number): number[] {
+export function seamPositions(panelCount: number, panelWidth: number): number[] {
   const seams: number[] = [];
-  for (let i = 1; i < panelCount; i++) seams.push(i * PANEL_WIDTH);
+  for (let i = 1; i < panelCount; i++) seams.push(i * panelWidth);
   return seams;
 }
 
@@ -55,9 +69,10 @@ export function canvasPointToPanel(
   x: number,
   y: number,
   panelCount: number,
+  panelWidth: number,
 ): { panel: number; x: number; y: number } {
-  const panel = Math.min(Math.max(Math.floor(x / PANEL_WIDTH), 0), panelCount - 1);
-  return { panel, x: x - panel * PANEL_WIDTH, y };
+  const panel = Math.min(Math.max(Math.floor(x / panelWidth), 0), panelCount - 1);
+  return { panel, x: x - panel * panelWidth, y };
 }
 
 /** Map panel-local coordinates back to canvas space. */
@@ -65,8 +80,9 @@ export function panelPointToCanvas(
   panel: number,
   x: number,
   y: number,
+  panelWidth: number,
 ): { x: number; y: number } {
-  return { x: panel * PANEL_WIDTH + x, y };
+  return { x: panel * panelWidth + x, y };
 }
 
 /**
@@ -102,21 +118,23 @@ export function rotatedBBox(rect: Rect, rotationDeg: number): Rect {
  * Which seams a bounding box crosses, with a safety margin on each side of
  * the seam. Returns seam indexes (seam i sits between panel i and i+1).
  */
-export function seamsCrossed(bbox: Rect, panelCount: number, margin = 0): number[] {
+export function seamsCrossed(
+  bbox: Rect,
+  panelCount: number,
+  panelWidth: number,
+  margin = 0,
+): number[] {
   const crossed: number[] = [];
-  seamPositions(panelCount).forEach((sx, i) => {
+  seamPositions(panelCount, panelWidth).forEach((sx, i) => {
     if (bbox.x < sx + margin && bbox.x + bbox.width > sx - margin) crossed.push(i);
   });
   return crossed;
 }
 
 /** Panels (0-based) that a bounding box overlaps. */
-export function panelsCovered(bbox: Rect, panelCount: number): number[] {
-  const first = Math.max(0, Math.floor(bbox.x / PANEL_WIDTH));
-  const last = Math.min(
-    panelCount - 1,
-    Math.ceil((bbox.x + bbox.width) / PANEL_WIDTH) - 1,
-  );
+export function panelsCovered(bbox: Rect, panelCount: number, panelWidth: number): number[] {
+  const first = Math.max(0, Math.floor(bbox.x / panelWidth));
+  const last = Math.min(panelCount - 1, Math.ceil((bbox.x + bbox.width) / panelWidth) - 1);
   const out: number[] = [];
   for (let i = first; i <= last; i++) out.push(i);
   return out;
@@ -124,14 +142,9 @@ export function panelsCovered(bbox: Rect, panelCount: number): number[] {
 
 // --- Profile-grid planner ---------------------------------------------------
 
-/** Canvas-space rect of the tile at (row, col) in a 3×N grid of squares. */
-export function gridTileRect(row: number, col: number): Rect {
-  return {
-    x: col * PANEL_WIDTH,
-    y: row * PANEL_WIDTH,
-    width: PANEL_WIDTH,
-    height: PANEL_WIDTH,
-  };
+/** Canvas-space rect of the tile at (row, col) in a 3×N grid of `tile`-px squares. */
+export function gridTileRect(row: number, col: number, tile: number): Rect {
+  return { x: col * tile, y: row * tile, width: tile, height: tile };
 }
 
 /**
@@ -163,6 +176,7 @@ export function reorderPanels<T extends { id: string; bbox: Rect }>(
   panelCount: number,
   from: number,
   to: number,
+  panelWidth: number,
 ): { offsets: Map<string, number>; captions: string[] } {
   const order: number[] = [];
   for (let i = 0; i < panelCount; i++) order.push(i);
@@ -175,14 +189,11 @@ export function reorderPanels<T extends { id: string; bbox: Rect }>(
   const offsets = new Map<string, number>();
   for (const layer of layers) {
     const cx = layer.bbox.x + layer.bbox.width / 2;
-    const spans = seamsCrossed(layer.bbox, panelCount).length > 0;
+    const spans = seamsCrossed(layer.bbox, panelCount, panelWidth).length > 0;
     if (spans) continue;
-    const panel = Math.min(
-      Math.max(Math.floor(cx / PANEL_WIDTH), 0),
-      panelCount - 1,
-    );
+    const panel = Math.min(Math.max(Math.floor(cx / panelWidth), 0), panelCount - 1);
     const target = newIndex.get(panel)!;
-    if (target !== panel) offsets.set(layer.id, (target - panel) * PANEL_WIDTH);
+    if (target !== panel) offsets.set(layer.id, (target - panel) * panelWidth);
   }
 
   const newCaptions = order.map((oldPanel) => captions[oldPanel] ?? '');

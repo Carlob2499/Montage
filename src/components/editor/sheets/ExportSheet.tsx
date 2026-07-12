@@ -142,12 +142,8 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
 
   const sizeLabel =
     doc.mode === 'grid'
-      ? '1080×1080 tiles'
-      : doc.aspect === '4:5'
-        ? '1080×1350'
-        : doc.aspect === '1:1'
-          ? '1080×1080'
-          : '1080×1920';
+      ? `${doc.panelWidth}×${doc.panelWidth} tiles`
+      : `${doc.panelWidth}×${doc.panelHeight}`;
 
   return (
     <Sheet title="Export" onClose={onClose}>
@@ -206,9 +202,8 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
               onChange={setVideoDuration}
             />
             <p className="text-[11px] text-ink-400">
-              Records in real time (≈{videoDuration + 2}s) at 1080×
-              {doc.aspect === '4:5' ? 1350 : doc.aspect === '1:1' ? 1080 : 1920}, WebM/MP4
-              depending on the browser.
+              Records in real time (≈{videoDuration + 2}s) at {doc.panelWidth}×{doc.panelHeight},
+              WebM/MP4 depending on the browser.
             </p>
           </section>
         )}

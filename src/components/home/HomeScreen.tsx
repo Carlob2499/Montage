@@ -6,7 +6,8 @@ import { useUIStore } from '../../state/uiStore';
 import { confirmAction } from '../../state/dialogStore';
 import { downloadBlob, slug } from '../../lib/exporter';
 import { normalizeProjectDoc } from '../../lib/projectSchema';
-import type { PanelAspect, ProjectDoc, ProjectMode } from '../../types';
+import type { ProjectDoc, ProjectMode } from '../../types';
+import { ASPECT_PRESETS } from '../../types';
 
 export default function HomeScreen() {
   const go = useUIStore((s) => s.go);
@@ -156,6 +157,9 @@ export default function HomeScreen() {
   );
 }
 
+const clampDim = (n: number): number =>
+  Number.isFinite(n) ? Math.min(4096, Math.max(200, Math.round(n))) : 1080;
+
 function NewProjectDialog({
   onClose,
   onCreate,
@@ -165,13 +169,20 @@ function NewProjectDialog({
 }) {
   const [name, setName] = useState('');
   const [mode, setMode] = useState<ProjectMode>('carousel');
-  const [aspect, setAspect] = useState<PanelAspect>('4:5');
+  const [aspect, setAspect] = useState<string>('4:5');
+  const [custom, setCustom] = useState(false);
+  const [customW, setCustomW] = useState(1080);
+  const [customH, setCustomH] = useState(1350);
   const [panels, setPanels] = useState(4);
 
   const create = () => {
+    const preset = ASPECT_PRESETS.find((p) => p.aspect === aspect);
+    const w = custom ? clampDim(customW) : (preset?.w ?? 1080);
+    const h = custom ? clampDim(customH) : (preset?.h ?? 1350);
+    const label = custom ? `${w}×${h}` : aspect;
     const doc = useProjectStore
       .getState()
-      .newProject(name.trim() || 'Untitled montage', mode, aspect, panels);
+      .newProject(name.trim() || 'Untitled montage', mode, label, panels, w, h);
     onCreate(doc);
   };
 
@@ -203,20 +214,59 @@ function NewProjectDialog({
             />
           </div>
           {mode === 'carousel' && (
-            <div className="flex gap-2">
-              {(['4:5', '1:1', '9:16'] as PanelAspect[]).map((a) => (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {ASPECT_PRESETS.map((p) => (
+                  <button
+                    key={p.aspect}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                      !custom && aspect === p.aspect
+                        ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
+                        : 'border-ink-200 dark:border-ink-700'
+                    }`}
+                    onClick={() => {
+                      setCustom(false);
+                      setAspect(p.aspect);
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
                 <button
-                  key={a}
-                  className={`btn flex-1 border ${
-                    aspect === a
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                    custom
                       ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
                       : 'border-ink-200 dark:border-ink-700'
                   }`}
-                  onClick={() => setAspect(a)}
+                  onClick={() => setCustom(true)}
                 >
-                  {a === '4:5' ? '4:5 Portrait' : a === '1:1' ? '1:1 Square' : '9:16 Story'}
+                  Custom
                 </button>
-              ))}
+              </div>
+              {custom && (
+                <div className="flex items-center gap-2 text-sm">
+                  <input
+                    type="number"
+                    className="input-base w-24"
+                    min={200}
+                    max={4096}
+                    value={customW}
+                    onChange={(e) => setCustomW(Number(e.target.value))}
+                    aria-label="Width"
+                  />
+                  <span className="text-ink-400">×</span>
+                  <input
+                    type="number"
+                    className="input-base w-24"
+                    min={200}
+                    max={4096}
+                    value={customH}
+                    onChange={(e) => setCustomH(Number(e.target.value))}
+                    aria-label="Height"
+                  />
+                  <span className="text-xs text-ink-400">px per panel</span>
+                </div>
+              )}
             </div>
           )}
           <label className="block text-sm">

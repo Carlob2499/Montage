@@ -3,7 +3,6 @@
 // Pure math here; the FaceDetector integration lives in useFaceScan.
 // ---------------------------------------------------------------------------
 
-import { PANEL_WIDTH } from '../types';
 import type { PhotoLayer } from '../types';
 import { seamPositions } from './slicer';
 import type { Rect } from './slicer';
@@ -25,13 +24,14 @@ function isSafe(bbox: Rect, seams: number[], margin: number): boolean {
 export function suggestNudge(
   bbox: Rect,
   panelCount: number,
+  panelWidth: number,
   margin = SEAM_MARGIN,
 ): number | null {
-  const seams = seamPositions(panelCount);
+  const seams = seamPositions(panelCount, panelWidth);
   if (isSafe(bbox, seams, margin)) return 0;
-  if (bbox.width > PANEL_WIDTH - 2 * margin) return null;
+  if (bbox.width > panelWidth - 2 * margin) return null;
 
-  const canvasW = panelCount * PANEL_WIDTH;
+  const canvasW = panelCount * panelWidth;
   const candidates: number[] = [];
   for (const s of seams) {
     candidates.push(s - margin - (bbox.x + bbox.width)); // land left of the seam

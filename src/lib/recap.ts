@@ -87,7 +87,7 @@ export function buildRecapDoc(
     photos.map((p) => ({ id: p.id, width: p.width, height: p.height, dateTaken: p.dateTaken })),
     height,
     usablePanels,
-    { style: 'dump', seed: 7, margin: 64, gutter: 28 },
+    { style: 'dump', seed: 7, margin: 64, gutter: 28, panelWidth: PANEL_WIDTH },
   );
 
   const statLines = [
@@ -189,6 +189,8 @@ export function buildRecapDoc(
     name: `${album.name} — recap`,
     mode: 'carousel',
     aspect,
+    panelWidth: PANEL_WIDTH,
+    panelHeight: height,
     panelCount,
     background: {
       kind: 'linear',

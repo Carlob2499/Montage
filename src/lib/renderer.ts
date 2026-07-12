@@ -569,7 +569,7 @@ export function renderPanel(
   index: number,
   resources: RenderResources,
 ): OffscreenCanvas {
-  return renderRegion(doc, panelRect(doc.aspect, index), resources);
+  return renderRegion(doc, panelRect(doc.panelWidth, doc.panelHeight, index), resources);
 }
 
 /** Render profile-grid tile (row, col) at 1080×1080. */
@@ -579,5 +579,5 @@ export function renderGridTile(
   col: number,
   resources: RenderResources,
 ): OffscreenCanvas {
-  return renderRegion(doc, gridTileRect(row, col), resources);
+  return renderRegion(doc, gridTileRect(row, col, doc.panelWidth), resources);
 }

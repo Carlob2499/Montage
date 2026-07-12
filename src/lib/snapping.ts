@@ -4,8 +4,6 @@
 
 import type { Rect } from './slicer';
 import { seamPositions } from './slicer';
-import { PANEL_HEIGHTS } from '../types';
-import type { PanelAspect } from '../types';
 
 export interface SnapResult {
   x: number;
@@ -23,7 +21,8 @@ export interface SnapTargets {
  * margins, and the edges/centers of other layers.
  */
 export function collectSnapTargets(
-  aspect: PanelAspect,
+  panelWidth: number,
+  panelHeight: number,
   panelCount: number,
   margin: number,
   otherBoxes: Rect[],
@@ -31,17 +30,17 @@ export function collectSnapTargets(
   canvasW = 0,
   canvasH = 0,
 ): SnapTargets {
-  const width = gridMode ? canvasW : panelCount * 1080;
-  const height = gridMode ? canvasH : PANEL_HEIGHTS[aspect];
+  const width = gridMode ? canvasW : panelCount * panelWidth;
+  const height = gridMode ? canvasH : panelHeight;
   const vertical: number[] = [0, width, width / 2];
   const horizontal: number[] = [0, height, height / 2];
 
   if (!gridMode) {
-    for (const seam of seamPositions(panelCount)) vertical.push(seam);
-    for (let i = 0; i < panelCount; i++) vertical.push(i * 1080 + 540);
+    for (const seam of seamPositions(panelCount, panelWidth)) vertical.push(seam);
+    for (let i = 0; i < panelCount; i++) vertical.push(i * panelWidth + panelWidth / 2);
   } else {
-    for (let x = 1080; x < width; x += 1080) vertical.push(x);
-    for (let y = 1080; y < height; y += 1080) horizontal.push(y);
+    for (let x = panelWidth; x < width; x += panelWidth) vertical.push(x);
+    for (let y = panelWidth; y < height; y += panelWidth) horizontal.push(y);
   }
 
   if (margin > 0) {

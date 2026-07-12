@@ -4,7 +4,7 @@
 // here — a bad import must never white-screen the editor later.
 // ---------------------------------------------------------------------------
 
-import { PANEL_HEIGHTS } from '../types';
+import { PANEL_HEIGHTS, PANEL_WIDTH } from '../types';
 import type { Background, GradientStop, Layer, PanelAspect, ProjectDoc } from '../types';
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -139,13 +139,15 @@ export function normalizeProjectDoc(raw: unknown): ProjectDoc {
     throw new Error('Not a Montage project file');
   }
   const mode = d.mode === 'grid' ? 'grid' : 'carousel';
-  const aspect: PanelAspect =
+  // aspect is now a free-form label; keep grid square
+  const aspect: PanelAspect = mode === 'grid' ? '1:1' : str(d.aspect, '4:5');
+  // geometry is the source of truth; synthesize for docs saved before it existed
+  const panelWidth =
+    mode === 'grid' ? 1080 : Math.max(1, Math.round(num(d.panelWidth, PANEL_WIDTH)));
+  const panelHeight =
     mode === 'grid'
-      ? '1:1'
-      : d.aspect === '1:1' || d.aspect === '9:16' || d.aspect === '4:5'
-        ? d.aspect
-        : '4:5';
-  if (!PANEL_HEIGHTS[aspect]) throw new Error('Unknown panel aspect');
+      ? 1080
+      : Math.max(1, Math.round(num(d.panelHeight, PANEL_HEIGHTS[aspect] ?? 1350)));
   const panelCount = Math.min(30, Math.max(1, Math.round(num(d.panelCount, 1))));
   const layers = (d.layers as unknown[]).map(normalizeLayer).filter((l): l is Layer => l !== null);
   const rawCaptions = Array.isArray(d.captions) ? d.captions : [];
@@ -157,6 +159,8 @@ export function normalizeProjectDoc(raw: unknown): ProjectDoc {
     name: str(d.name, 'Imported project'),
     mode,
     aspect,
+    panelWidth,
+    panelHeight,
     panelCount,
     background: normalizeBackground(d.background),
     layers,

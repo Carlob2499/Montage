@@ -5,7 +5,7 @@ import { confirmAction } from '../../../state/dialogStore';
 import { Slider } from './TextSheet';
 import { layerBBox } from '../../../lib/renderer';
 import { reorderPanels, panelsCovered, seamsCrossed } from '../../../lib/slicer';
-import { PANEL_WIDTH } from '../../../types';
+import { ASPECT_PRESETS } from '../../../types';
 
 export default function PanelsSheet({ onClose }: { onClose: () => void }) {
   const doc = useProjectStore((s) => s.doc);
@@ -38,6 +38,7 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
       doc.panelCount,
       from,
       to,
+      doc.panelWidth,
     );
     store.commit((d) => ({
       ...d,
@@ -61,7 +62,7 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
         layers: d.layers.map((l) => {
           const bbox = layerBBox(l);
           const center = bbox.x + bbox.width / 2;
-          return center >= at * PANEL_WIDTH ? { ...l, x: l.x + PANEL_WIDTH } : l;
+          return center >= at * d.panelWidth ? { ...l, x: l.x + d.panelWidth } : l;
         }),
       };
     });
@@ -79,8 +80,8 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
       const captions = d.captions.filter((_, i) => i !== at);
       const keep = d.layers.filter((l) => {
         const bbox = layerBBox(l);
-        const spansSeam = seamsCrossed(bbox, d.panelCount).length > 0;
-        const inPanel = panelsCovered(bbox, d.panelCount).includes(at) && !spansSeam;
+        const spansSeam = seamsCrossed(bbox, d.panelCount, d.panelWidth).length > 0;
+        const inPanel = panelsCovered(bbox, d.panelCount, d.panelWidth).includes(at) && !spansSeam;
         return !inPanel;
       });
       return {
@@ -90,10 +91,15 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
         layers: keep.map((l) => {
           const bbox = layerBBox(l);
           const center = bbox.x + bbox.width / 2;
-          return center > (at + 1) * PANEL_WIDTH ? { ...l, x: l.x - PANEL_WIDTH } : l;
+          return center > (at + 1) * d.panelWidth ? { ...l, x: l.x - d.panelWidth } : l;
         }),
       };
     });
+  };
+
+  const resize = (w: number, h: number, aspect: string) => {
+    if (w === doc.panelWidth && h === doc.panelHeight) return;
+    store.resizeProject(w, h, aspect);
   };
 
   return (
@@ -106,6 +112,34 @@ export default function PanelsSheet({ onClose }: { onClose: () => void }) {
           value={doc.panelCount}
           onChange={setCount}
         />
+        {!isGrid && (
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-ink-400">
+              Canvas size — {doc.panelWidth}×{doc.panelHeight}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {ASPECT_PRESETS.map((p) => {
+                const active = p.aspect === doc.aspect;
+                return (
+                  <button
+                    key={p.aspect}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
+                      active
+                        ? 'bg-accent-500 text-white'
+                        : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                    }`}
+                    onClick={() => resize(p.w, p.h, p.aspect)}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-ink-400">
+              Resizing re-flows every layer to the new proportions (one undo step).
+            </p>
+          </div>
+        )}
         {!isGrid && (
           <>
             <div className="space-y-1.5">

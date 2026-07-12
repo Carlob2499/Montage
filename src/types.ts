@@ -2,15 +2,39 @@
 // Core domain types for Montage Studio
 // ---------------------------------------------------------------------------
 
-export type PanelAspect = '4:5' | '1:1' | '9:16';
+/** Aspect is now just a display LABEL; real geometry lives in panelWidth/Height. */
+export type PanelAspect = string;
 
 export const PANEL_WIDTH = 1080;
 
-export const PANEL_HEIGHTS: Record<PanelAspect, number> = {
+/** Heights for the classic presets — used only to seed/back-compat old docs. */
+export const PANEL_HEIGHTS: Record<string, number> = {
   '4:5': 1350,
   '1:1': 1080,
   '9:16': 1920,
+  '3:4': 1440,
+  '2:3': 1620,
+  '16:9': 1080,
+  '1.91:1': 1005,
 };
+
+export interface AspectPreset {
+  label: string;
+  aspect: string;
+  w: number;
+  h: number;
+}
+
+/** Data-driven preset table — drives New-Project and Resize UIs. */
+export const ASPECT_PRESETS: AspectPreset[] = [
+  { label: '4:5 Portrait', aspect: '4:5', w: 1080, h: 1350 },
+  { label: '1:1 Square', aspect: '1:1', w: 1080, h: 1080 },
+  { label: '9:16 Story', aspect: '9:16', w: 1080, h: 1920 },
+  { label: '3:4 Classic', aspect: '3:4', w: 1080, h: 1440 },
+  { label: '2:3 Pinterest', aspect: '2:3', w: 1080, h: 1620 },
+  { label: '16:9 Landscape', aspect: '16:9', w: 1920, h: 1080 },
+  { label: '1.91:1 Link', aspect: '1.91:1', w: 1920, h: 1005 },
+];
 
 // --- Photo library ---------------------------------------------------------
 
@@ -191,7 +215,11 @@ export interface ProjectDoc {
   name: string;
   /** carousel = horizontal panels; grid = 3×N profile-grid planner */
   mode: ProjectMode;
+  /** display label only ('4:5', '16:9', 'custom'…) — geometry is panelWidth/Height */
   aspect: PanelAspect;
+  /** per-panel pixel dimensions (the single geometry source of truth) */
+  panelWidth: number;
+  panelHeight: number;
   /** carousel: number of panels; grid: number of rows */
   panelCount: number;
   background: Background;

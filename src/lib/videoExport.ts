@@ -6,7 +6,6 @@
 // ---------------------------------------------------------------------------
 
 import type { ProjectDoc } from '../types';
-import { PANEL_HEIGHTS, PANEL_WIDTH } from '../types';
 import { canvasSize } from './slicer';
 import { loadResources, releaseResources, slug } from './exporter';
 import { renderRegion } from './renderer';
@@ -56,7 +55,8 @@ export async function exportPanoramaVideo(
 
   const fps = opts.fps ?? 30;
   const { width: W, height: H } = canvasSize(doc);
-  const outH = PANEL_HEIGHTS[doc.aspect];
+  const pw = doc.panelWidth;
+  const outH = doc.panelHeight;
 
   const resources = await loadResources(doc);
   let strip: OffscreenCanvas;
@@ -70,7 +70,7 @@ export async function exportPanoramaVideo(
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width = PANEL_WIDTH;
+  canvas.width = pw;
   canvas.height = outH;
   const ctx = canvas.getContext('2d')!;
   ctx.imageSmoothingQuality = 'high';
@@ -86,21 +86,11 @@ export async function exportPanoramaVideo(
   };
 
   const totalSec = opts.durationSec + 2 * HOLD_SEC;
-  const travel = Math.max(0, W - PANEL_WIDTH);
+  const travel = Math.max(0, W - pw);
 
   const drawAt = (x: number) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(
-      strip,
-      x * stripScale,
-      0,
-      PANEL_WIDTH * stripScale,
-      H * stripScale,
-      0,
-      0,
-      PANEL_WIDTH,
-      outH,
-    );
+    ctx.drawImage(strip, x * stripScale, 0, pw * stripScale, H * stripScale, 0, 0, pw, outH);
   };
 
   const done = new Promise<Blob>((resolve, reject) => {

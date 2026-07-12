@@ -6,7 +6,6 @@ import { useProjectStore } from '../../state/projectStore';
 import { canvasSize, seamPositions, seamsCrossed } from '../../lib/slicer';
 import { collectSnapTargets, snapBox } from '../../lib/snapping';
 import { layerBBox } from '../../lib/renderer';
-import { PANEL_WIDTH } from '../../types';
 import type { CardLayer, Layer, PhotoLayer, StickerLayer, TextLayer } from '../../types';
 import PhotoNode from './nodes/PhotoNode';
 import TextNode from './nodes/TextNode';
@@ -35,9 +34,12 @@ export default function CanvasStage({
   const pinch = useRef<{ dist: number; center: { x: number; y: number } } | null>(null);
 
   const dims = useMemo(() => (doc ? canvasSize(doc) : { width: 1080, height: 1350 }), [doc]);
+  const panelW = doc?.panelWidth ?? 1080;
 
-  // fit view on project / panel-count change
-  const fitKey = doc ? `${doc.id}:${doc.panelCount}:${doc.aspect}:${doc.mode}` : '';
+  // fit view on project / panel-count / geometry change
+  const fitKey = doc
+    ? `${doc.id}:${doc.panelCount}:${doc.aspect}:${doc.mode}:${doc.panelWidth}:${doc.panelHeight}`
+    : '';
   useEffect(() => {
     if (!doc) return;
     const pad = 24;
@@ -47,12 +49,12 @@ export default function CanvasStage({
     );
     const fitPanel = Math.min(
       (viewport.height - pad * 2) / dims.height,
-      (viewport.width - pad * 2) / (PANEL_WIDTH * 1.15),
+      (viewport.width - pad * 2) / (panelW * 1.15),
     );
     const scale = Math.max(fitAll, Math.min(fitPanel, 1));
     setView({
       scale,
-      x: (viewport.width - Math.min(dims.width, PANEL_WIDTH / 0.92) * scale) / 2,
+      x: (viewport.width - Math.min(dims.width, panelW / 0.92) * scale) / 2,
       y: (viewport.height - dims.height * scale) / 2,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,7 +83,8 @@ export default function CanvasStage({
       .filter((l) => !selectedIds.includes(l.id))
       .map((l) => layerBBox(l));
     return collectSnapTargets(
-      doc.aspect,
+      doc.panelWidth,
+      doc.panelHeight,
       doc.panelCount,
       doc.margin,
       others,
@@ -162,11 +165,12 @@ export default function CanvasStage({
 
   if (!doc) return null;
 
-  const seams = doc.mode === 'carousel' ? seamPositions(doc.panelCount) : [];
+  const seams = doc.mode === 'carousel' ? seamPositions(doc.panelCount, doc.panelWidth) : [];
   const warnSeams = new Set<number>();
   for (const layer of doc.layers) {
     if (layer.type === 'text' || (layer.type === 'photo' && layer.isSubject)) {
-      for (const s of seamsCrossed(layerBBox(layer), doc.panelCount, 40)) warnSeams.add(s);
+      for (const s of seamsCrossed(layerBBox(layer), doc.panelCount, doc.panelWidth, 40))
+        warnSeams.add(s);
     }
   }
 
@@ -264,7 +268,7 @@ export default function CanvasStage({
           Array.from({ length: doc.panelCount }, (_, i) => (
             <KonvaText
               key={i}
-              x={i * PANEL_WIDTH + 16}
+              x={i * doc.panelWidth + 16}
               y={16}
               text={`${i + 1}`}
               fontSize={28 / view.scale}
@@ -273,7 +277,9 @@ export default function CanvasStage({
               opacity={0.6}
             />
           ))}
-        {doc.mode === 'grid' && <GridOverlay dims={dims} rows={doc.panelCount} scale={view.scale} />}
+        {doc.mode === 'grid' && (
+          <GridOverlay dims={dims} rows={doc.panelCount} tile={doc.panelWidth} scale={view.scale} />
+        )}
         {guides.vertical.map((x) => (
           <Line key={`v${x}`} points={[x, 0, x, dims.height]} stroke="#f472b6" strokeWidth={1 / view.scale} />
         ))}
@@ -397,16 +403,18 @@ function BlurredBgImage({
 function GridOverlay({
   dims,
   rows,
+  tile,
   scale,
 }: {
   dims: { width: number; height: number };
   rows: number;
+  tile: number;
   scale: number;
 }) {
   const order = gridUploadOrder(rows);
   const uploadIndex = new Map(order.map((t, i) => [`${t.row},${t.col}`, i + 1]));
   const lines: React.ReactNode[] = [];
-  for (let x = PANEL_WIDTH; x < dims.width; x += PANEL_WIDTH) {
+  for (let x = tile; x < dims.width; x += tile) {
     lines.push(
       <Line
         key={`gx${x}`}
@@ -418,7 +426,7 @@ function GridOverlay({
       />,
     );
   }
-  for (let y = PANEL_WIDTH; y < dims.height; y += PANEL_WIDTH) {
+  for (let y = tile; y < dims.height; y += tile) {
     lines.push(
       <Line
         key={`gy${y}`}
@@ -437,8 +445,8 @@ function GridOverlay({
         [0, 1, 2].map((c) => (
           <KonvaText
             key={`${r}-${c}`}
-            x={c * PANEL_WIDTH + 16}
-            y={r * PANEL_WIDTH + 16}
+            x={c * tile + 16}
+            y={r * tile + 16}
             text={`upload #${uploadIndex.get(`${r},${c}`)}`}
             fontSize={24 / scale}
             fill="#3b82f6"
