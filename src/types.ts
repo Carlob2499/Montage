@@ -59,6 +59,8 @@ export interface PhotoRecord {
   /** manual sort position within album */
   order: number;
   kind: 'image' | 'video';
+  /** clip length in seconds (video only) — drives motion export duration */
+  duration?: number;
   duplicateOf?: string;
 }
 

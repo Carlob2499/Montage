@@ -70,3 +70,46 @@ export function useBlobImage(
   }, [url]);
   return img;
 }
+
+/**
+ * Load a muted, looping HTMLVideoElement from a cached blob URL, resolving only
+ * once it can actually render a frame. Uses the iOS-safe combination
+ * (muted + playsInline + preload='auto') — Safari never reaches
+ * HAVE_CURRENT_DATA with preload='metadata'. `enabled=false` skips loading so
+ * the caller can fall back to the poster still.
+ */
+export function useBlobVideo(
+  table: BlobTable,
+  id: string | null | undefined,
+  enabled = true,
+): HTMLVideoElement | null {
+  const url = useBlobUrl(table, enabled ? id : null);
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (!url || !enabled) {
+      setVideo(null);
+      return;
+    }
+    let alive = true;
+    const el = document.createElement('video');
+    el.muted = true;
+    el.loop = true;
+    el.playsInline = true;
+    el.preload = 'auto';
+    el.crossOrigin = 'anonymous';
+    const onReady = () => {
+      if (alive) setVideo(el);
+    };
+    el.onloadeddata = onReady;
+    el.src = url;
+    el.load();
+    return () => {
+      alive = false;
+      el.onloadeddata = null;
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+    };
+  }, [url, enabled]);
+  return video;
+}

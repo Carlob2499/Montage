@@ -14,13 +14,38 @@ export interface VideoExportOptions {
   /** scroll duration, excluding the hold at each end */
   durationSec: number;
   fps?: number;
+  /** subtle Ken Burns zoom layered on the horizontal pan (stills feel alive) */
+  kenBurns?: boolean;
   onProgress?: (fraction: number) => void;
 }
 
 const HOLD_SEC = 0.7; // pause on first/last panel
 const MAX_STRIP_PIXELS = 12_000_000;
+/** max extra zoom reached at the end of a Ken Burns pass */
+const KEN_BURNS_INTENSITY = 0.08;
 
-function pickMimeType(): string | null {
+/**
+ * Source window (in canvas px) for a Ken Burns frame: a slow zoom-in centered
+ * on the current pan position `x`. Pure + deterministic. At progress 0 the
+ * window is the full panel (sw=pw, sh=H, sy=0); it shrinks toward the center
+ * as progress → 1. Because the window only shrinks and re-centers, it always
+ * stays inside [0, x+pw] × [0, H].
+ */
+export function kenBurnsWindow(
+  x: number,
+  progress: number,
+  H: number,
+  pw: number,
+  intensity = KEN_BURNS_INTENSITY,
+): { sx: number; sy: number; sw: number; sh: number } {
+  const t = Math.min(1, Math.max(0, progress));
+  const z = 1 + intensity * t;
+  const sw = pw / z;
+  const sh = H / z;
+  return { sx: x + (pw - sw) / 2, sy: (H - sh) / 2, sw, sh };
+}
+
+export function pickMimeType(): string | null {
   const candidates = [
     'video/mp4;codecs=avc1',
     'video/mp4',
@@ -88,9 +113,22 @@ export async function exportPanoramaVideo(
   const totalSec = opts.durationSec + 2 * HOLD_SEC;
   const travel = Math.max(0, W - pw);
 
-  const drawAt = (x: number) => {
+  const drawAt = (x: number, progress: number) => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(strip, x * stripScale, 0, pw * stripScale, H * stripScale, 0, 0, pw, outH);
+    const win = opts.kenBurns
+      ? kenBurnsWindow(x, progress, H, pw)
+      : { sx: x, sy: 0, sw: pw, sh: H };
+    ctx.drawImage(
+      strip,
+      win.sx * stripScale,
+      win.sy * stripScale,
+      win.sw * stripScale,
+      win.sh * stripScale,
+      0,
+      0,
+      pw,
+      outH,
+    );
   };
 
   const done = new Promise<Blob>((resolve, reject) => {
@@ -98,7 +136,7 @@ export async function exportPanoramaVideo(
     recorder.onerror = () => reject(new Error('Video recording failed'));
   });
 
-  drawAt(0);
+  drawAt(0, 0);
   recorder.start(250);
   const start = performance.now();
 
@@ -106,12 +144,12 @@ export async function exportPanoramaVideo(
     const tick = () => {
       const elapsed = (performance.now() - start) / 1000;
       if (elapsed >= totalSec) {
-        drawAt(travel);
+        drawAt(travel, 1);
         resolve();
         return;
       }
       const t = Math.min(1, Math.max(0, (elapsed - HOLD_SEC) / opts.durationSec));
-      drawAt(smoothstep(t) * travel);
+      drawAt(smoothstep(t) * travel, t);
       opts.onProgress?.(elapsed / totalSec);
       requestAnimationFrame(tick);
     };

@@ -21,10 +21,18 @@ export interface PhotoResource {
 export interface RenderResources {
   photos: Map<string, PhotoResource>;
   stickers: Map<string, ImageBitmap>;
+  /** live video elements for motion export (photoId → element); when a ready
+   *  element exists for a photo layer, its CURRENT frame is drawn instead of
+   *  the poster bitmap — same cover-fit math, so playback/export stay in sync */
+  videos?: Map<string, HTMLVideoElement>;
   /** per-export caches (populated lazily by the renderer) */
   cropCache?: Map<string, OffscreenCanvas>;
   contentCache?: Map<string, OffscreenCanvas>;
   backdropCache?: OffscreenCanvas | null;
+}
+
+function videoFrameReady(el: HTMLVideoElement | undefined): el is HTMLVideoElement {
+  return !!el && el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0;
 }
 
 type Ctx = OffscreenCanvasRenderingContext2D;
@@ -301,7 +309,10 @@ function paintPhotoLayer(
     ctx.clip();
   }
 
-  if (!res) {
+  const videoEl = resources.videos?.get(layer.photoId);
+  const liveVideo = videoFrameReady(videoEl);
+
+  if (!res && !liveVideo) {
     // unfilled placeholder — export as subtle neutral block
     ctx.fillStyle = 'rgba(127,127,127,0.15)';
     ctx.fillRect(content.x, content.y, content.width, content.height);
@@ -309,7 +320,31 @@ function paintPhotoLayer(
     return;
   }
 
-  if (layer.rotation === 0) {
+  if (liveVideo) {
+    // Draw the clip's CURRENT frame with the same cover-fit as the poster/
+    // editor (coverCrop). Per-frame color adjustments/crop are intentionally
+    // skipped for motion — the poster still carries them.
+    const cover = coverCrop(
+      videoEl.videoWidth,
+      videoEl.videoHeight,
+      content.width,
+      content.height,
+      layer.imgScale,
+      layer.imgOffsetX,
+      layer.imgOffsetY,
+    );
+    ctx.drawImage(
+      videoEl,
+      cover.sx,
+      cover.sy,
+      cover.sw,
+      cover.sh,
+      content.x,
+      content.y,
+      content.width,
+      content.height,
+    );
+  } else if (res && layer.rotation === 0) {
     // Axis-aligned: render ONLY the region-intersecting slice (plus pad).
     // Bounds memory for panorama-wide layers (a 20-panel photo never
     // allocates a 29-megapixel canvas) and skips per-panel recompute.
@@ -349,7 +384,7 @@ function paintPhotoLayer(
         visY2 - visY,
       );
     }
-  } else {
+  } else if (res) {
     // Rotated: render the full content once and cache it across panels.
     resources.contentCache ??= new Map();
     let cached = resources.contentCache.get(layer.id);

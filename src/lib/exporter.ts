@@ -89,6 +89,7 @@ async function decodeScaled(
 export async function loadResources(
   doc: ProjectDoc,
   useProxies = false,
+  withVideos = false,
 ): Promise<RenderResources> {
   const photoIds = new Set<string>();
   const stickerIds = new Set<string>();
@@ -101,6 +102,7 @@ export async function loadResources(
   const photos = new Map<string, { bitmap: ImageBitmap; stack?: import('../types').EditStack }>();
   const stickers = new Map<string, ImageBitmap>();
   const resources: RenderResources = { photos, stickers };
+  if (withVideos) resources.videos = new Map();
 
   try {
     for (const id of photoIds) {
@@ -122,6 +124,15 @@ export async function loadResources(
         bitmap = await decodeImage(row.blob);
       }
       photos.set(id, { bitmap, stack });
+
+      // motion export: also load the original clip as a playable element
+      if (withVideos && record?.kind === 'video') {
+        const orig = await db.originals.get(id);
+        if (orig) {
+          const el = await loadVideoElement(orig.blob).catch(() => null);
+          if (el) resources.videos!.set(id, el);
+        }
+      }
     }
 
     for (const id of stickerIds) {
@@ -136,9 +147,42 @@ export async function loadResources(
   return resources;
 }
 
+/** Load a muted, looping video element ready to render frames (iOS-safe). */
+function loadVideoElement(blob: Blob): Promise<HTMLVideoElement> {
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('video');
+  el.muted = true;
+  el.loop = true;
+  el.playsInline = true;
+  el.preload = 'auto';
+  el.src = url;
+  el.load();
+  return new Promise<HTMLVideoElement>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Video load timed out')), 10_000);
+    el.onloadeddata = () => {
+      clearTimeout(timer);
+      resolve(el);
+    };
+    el.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('Could not decode video'));
+    };
+  });
+}
+
 export function releaseResources(res: RenderResources): void {
   for (const { bitmap } of res.photos.values()) bitmap.close();
   for (const bmp of res.stickers.values()) bmp.close();
+  if (res.videos) {
+    for (const el of res.videos.values()) {
+      el.pause();
+      const src = el.src;
+      el.removeAttribute('src');
+      el.load();
+      if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+    }
+    res.videos.clear();
+  }
 }
 
 async function encode(canvas: OffscreenCanvas, opts: ExportOptions): Promise<Blob> {

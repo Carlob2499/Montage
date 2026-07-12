@@ -1,13 +1,13 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { Group, Image as KonvaImage, Line, Rect, Text as KonvaText } from 'react-konva';
-import type Konva from 'konva';
+import Konva from 'konva';
 import { frameContentRect, tapeStrips, tornEdgePath, tracePath } from '../../../lib/frameStyles';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../../db/db';
 import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
-import { useBlobImage } from '../../../hooks/useBlobUrl';
+import { useBlobImage, useBlobVideo } from '../../../hooks/useBlobUrl';
 import { coverCrop } from '../../../lib/imageUtils';
 import { applyAdjustments, isNeutral, normalizeAdjustments } from '../../../lib/editStack';
 import type { Layer, PhotoLayer } from '../../../types';
@@ -20,10 +20,13 @@ function PhotoNode({
   layer,
   onDragMove,
   onDragEnd,
+  canPlay = true,
 }: {
   layer: PhotoLayer;
   onDragMove: (e: KonvaEventObject<DragEvent>, layer: Layer) => void;
   onDragEnd: (e: KonvaEventObject<DragEvent>, layer: Layer) => void;
+  /** within the concurrent-video cap → allowed to autoplay (else holds poster) */
+  canPlay?: boolean;
 }) {
   const groupRef = useRef<Konva.Group>(null);
   const imageRef = useRef<Konva.Image>(null);
@@ -36,8 +39,13 @@ function PhotoNode({
     [layer.photoId],
   );
   const isVideo = record?.kind === 'video';
+  const motion = useUIStore((s) => s.motion);
   // videos store their full-size poster frame as the proxy
   const img = useBlobImage('proxies', layer.photoId || null);
+  // live clip: only load/play when it's a video, motion is on, and it's within
+  // the concurrent-play cap. Otherwise the poster still is used.
+  const wantVideo = !!isVideo && motion && canPlay;
+  const video = useBlobVideo('originals', layer.photoId || null, wantVideo);
 
   // pre-apply the stack crop (crop rect + rotate/flip) to an offscreen canvas
   const source = useMemo(() => {
@@ -63,7 +71,9 @@ function PhotoNode({
   }, [img, edit?.stack.crop]);
 
   const adjustments = edit ? normalizeAdjustments(edit.stack.adjustments) : undefined;
-  const hasFilter = !!adjustments && !isNeutral(adjustments);
+  // per-frame color adjustments/crop are intentionally NOT applied to a live
+  // clip (the poster still carries them) — keeps playback + motion export cheap
+  const hasFilter = !!adjustments && !isNeutral(adjustments) && !video;
 
   const filterFn = useMemo(() => {
     if (!hasFilter || !adjustments) return undefined;
@@ -73,11 +83,12 @@ function PhotoNode({
     };
   }, [hasFilter, adjustments]);
 
-  // (re)cache the image node when filters are active — required by Konva
+  // (re)cache the image node when filters are active — required by Konva.
+  // A playing video never caches (it must redraw its live frame each tick).
   useEffect(() => {
     const node = imageRef.current;
     if (!node) return;
-    if (hasFilter && source) {
+    if (hasFilter && source && !video) {
       // cap cache resolution so filtering stays fast while editing
       const pixelRatio = Math.min(1, 1200 / Math.max(layer.width, layer.height));
       node.cache({ pixelRatio });
@@ -85,7 +96,30 @@ function PhotoNode({
       node.clearCache();
     }
     node.getLayer()?.batchDraw();
-  }, [hasFilter, filterFn, source, layer.width, layer.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
+  }, [hasFilter, filterFn, source, video, layer.width, layer.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
+
+  // drive live playback: start the clip and pump frames onto the Konva layer
+  // via a Konva.Animation (redraws the layer each frame while playing)
+  useEffect(() => {
+    const node = imageRef.current;
+    if (!video || !node) return;
+    video.currentTime = 0;
+    const anim = new Konva.Animation(() => {}, node.getLayer());
+    let cancelled = false;
+    void video.play().then(
+      () => {
+        if (!cancelled) anim.start();
+      },
+      () => {
+        /* autoplay blocked (should not happen for muted) — poster stays */
+      },
+    );
+    return () => {
+      cancelled = true;
+      anim.stop();
+      video.pause();
+    };
+  }, [video]);
 
   const content = useMemo(
     () => frameContentRect(layer.frameStyle, layer.width, layer.height),
@@ -98,6 +132,25 @@ function PhotoNode({
     const ih = source.height;
     return coverCrop(iw, ih, content.width, content.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY);
   }, [source, content.width, content.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
+
+  // a playing clip draws directly from the video element (same cover-fit math
+  // as the poster/export → preview parity), skipping the poster crop pipeline
+  const videoCrop = useMemo(() => {
+    if (!video || !video.videoWidth || !video.videoHeight) return undefined;
+    return coverCrop(
+      video.videoWidth,
+      video.videoHeight,
+      content.width,
+      content.height,
+      layer.imgScale,
+      layer.imgOffsetX,
+      layer.imgOffsetY,
+    );
+  }, [video, content.width, content.height, layer.imgScale, layer.imgOffsetX, layer.imgOffsetY]);
+
+  const playing = !!video && !!videoCrop;
+  const displaySource = playing ? video : source;
+  const displayCrop = playing ? videoCrop : crop;
 
   const tornPts = useMemo(
     () =>
@@ -217,15 +270,20 @@ function PhotoNode({
         />
       )}
       <Group clipFunc={clipFunc}>
-        {source && crop ? (
+        {displaySource && displayCrop ? (
           <KonvaImage
             ref={imageRef}
-            image={source}
+            image={displaySource}
             x={content.x}
             y={content.y}
             width={content.width}
             height={content.height}
-            crop={{ x: crop.sx, y: crop.sy, width: crop.sw, height: crop.sh }}
+            crop={{
+              x: displayCrop.sx,
+              y: displayCrop.sy,
+              width: displayCrop.sw,
+              height: displayCrop.sh,
+            }}
             filters={filterFn ? [filterFn] : undefined}
             perfectDrawEnabled={false}
           />
@@ -275,11 +333,12 @@ function PhotoNode({
         <KonvaText
           x={12}
           y={12}
-          text="▶ video (exports as still)"
+          text={playing ? '▶ live' : '❚❚ video'}
           fontSize={22}
           fill="#ffffff"
           shadowColor="black"
           shadowBlur={6}
+          listening={false}
         />
       )}
     </Group>

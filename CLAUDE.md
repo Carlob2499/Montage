@@ -42,6 +42,14 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 5. **Edits are parameter stacks; originals are immutable.** `applyAdjustments` is the ONE
    pixel function used by Konva filters, preset thumbnails, and export. Keep it pure and
    tested.
+6. **Motion goes through the still path.** Video-in-cell playback (editor) and motion panel
+   export (`src/lib/motionExport.ts`) draw the clip's CURRENT frame with the SAME `coverCrop`
+   as the poster, and motion export composites through `renderRegion` — so seam continuity,
+   z-order, and frame styles are identical to a still export by construction. Per-frame color
+   adjustments/crop are intentionally NOT applied to a playing clip (the poster still carries
+   them); keep that cheap. A live frame is fed via `RenderResources.videos` (photoId →
+   `HTMLVideoElement`); `paintPhotoLayer` prefers it over the poster bitmap. Motion export is
+   real-time capture (a 4s panel takes 4s). Audio passthrough is a deliberate non-goal.
 
 ## Mobile/iOS constraints (bugs already paid for)
 
@@ -56,6 +64,9 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 - Video elements need `playsInline`, `preload='auto'`, and every await bounded by a
   timeout (`videoPoster` in `importPhotos.ts`) or imports hang forever on iOS.
 - `<video preload="metadata">` never reaches HAVE_CURRENT_DATA on iOS.
+- iOS Safari drops video elements past a low simultaneous-play ceiling → only the first
+  ~8 video layers autoplay in the editor (`MAX_CONCURRENT_VIDEOS` in `CanvasStage`); the
+  rest hold their poster. The global `motion` toggle (`uiStore`) freezes all clips.
 
 ## Recurring JS/React gotchas hit in this codebase
 
@@ -90,4 +101,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 127 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 152 tests.

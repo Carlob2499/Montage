@@ -37,6 +37,20 @@ export default function EditorScreen() {
   useKeyboardShortcuts();
   useFaceScan();
 
+  const motion = useUIStore((s) => s.motion);
+  const photoIdsKey = doc
+    ? doc.layers
+        .filter((l) => l.type === 'photo' && l.photoId)
+        .map((l) => (l as { photoId: string }).photoId)
+        .join(',')
+    : '';
+  const hasVideo = useLiveQuery(async () => {
+    const ids = photoIdsKey ? photoIdsKey.split(',') : [];
+    if (!ids.length) return false;
+    const rows = await db.photos.bulkGet(ids);
+    return rows.some((r) => r?.kind === 'video');
+  }, [photoIdsKey]) ?? false;
+
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -83,6 +97,16 @@ export default function EditorScreen() {
           </div>
         </div>
         <UndoRedo />
+        {hasVideo && (
+          <button
+            className="btn-ghost px-2"
+            title={motion ? 'Pause clips' : 'Play clips'}
+            aria-label={motion ? 'Pause clips' : 'Play clips'}
+            onClick={() => useUIStore.getState().toggleMotion()}
+          >
+            {motion ? '❚❚' : '▶'}
+          </button>
+        )}
         <button className="btn-ghost px-2.5 text-sm" onClick={() => go('preview')}>
           Preview
         </button>

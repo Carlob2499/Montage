@@ -77,6 +77,7 @@ async function videoPoster(file: File): Promise<{
   poster: Blob;
   width: number;
   height: number;
+  duration?: number;
 }> {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
@@ -137,6 +138,7 @@ async function videoPoster(file: File): Promise<{
       poster: poster.blob,
       width: video.videoWidth,
       height: video.videoHeight,
+      duration: Number.isFinite(video.duration) && video.duration > 0 ? video.duration : undefined,
     };
   } finally {
     video.removeAttribute('src');
@@ -176,6 +178,7 @@ export async function importFiles(
       let thumbBlob: Blob;
       let proxyBlob: Blob | undefined;
       let storedBlob: Blob = file;
+      let duration: number | undefined;
 
       if (isVideo) {
         const poster = await videoPoster(file);
@@ -183,6 +186,7 @@ export async function importFiles(
         height = poster.height;
         thumbBlob = poster.thumb;
         proxyBlob = poster.poster;
+        duration = poster.duration;
       } else {
         storedBlob = await normalizeImageBlob(file);
         const bitmap = await decodeImage(storedBlob, exif.orientation);
@@ -214,6 +218,7 @@ export async function importFiles(
         tags: [],
         order: order++,
         kind: isVideo ? 'video' : 'image',
+        duration,
       };
 
       await db.transaction(

@@ -14,8 +14,11 @@ import {
 import type { ExportedFile, ExportOptions } from '../../../lib/exporter';
 import { canShareFiles, shareFiles, shareSupported, toShareFiles } from '../../../lib/share';
 import { exportPanoramaVideo, videoExportSupported } from '../../../lib/videoExport';
+import { exportMotionPanels } from '../../../lib/motionExport';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../../db/db';
 
-type Target = 'panels' | 'grid' | 'panorama' | 'video';
+type Target = 'panels' | 'grid' | 'panorama' | 'video' | 'motion';
 type Delivery = 'share' | 'files' | 'zip';
 
 export default function ExportSheet({ onClose }: { onClose: () => void }) {
@@ -32,8 +35,49 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
   // the share sheet opens on tap 2)
   const [prepared, setPrepared] = useState<File[] | null>(null);
   const [videoDuration, setVideoDuration] = useState(8);
+  const [kenBurns, setKenBurns] = useState(true);
   const [recording, setRecording] = useState<number | null>(null);
+  const [motionCap, setMotionCap] = useState(8);
+  const [recordingMotion, setRecordingMotion] = useState<number | null>(null);
+
+  // does this doc reference any video clip? (gates the Motion export target)
+  const photoIdsKey = doc
+    ? doc.layers
+        .filter((l) => l.type === 'photo' && l.photoId)
+        .map((l) => (l as { photoId: string }).photoId)
+        .join(',')
+    : '';
+  const hasVideo =
+    useLiveQuery(async () => {
+      const ids = photoIdsKey ? photoIdsKey.split(',') : [];
+      if (!ids.length) return false;
+      const rows = await db.photos.bulkGet(ids);
+      return rows.some((r) => r?.kind === 'video');
+    }, [photoIdsKey]) ?? false;
+
   if (!doc) return null;
+
+  const isVideoish = target === 'video' || target === 'motion';
+
+  const runMotion = async () => {
+    await useProjectStore.getState().save();
+    setRecordingMotion(0);
+    try {
+      const files = await exportMotionPanels(doc, {
+        capSec: motionCap,
+        onProgress: (f) => setRecordingMotion(f),
+      });
+      const zip = await bundleZip(doc, files);
+      downloadBlob(zip, `${slug(doc.name)}-motion.zip`);
+      toast(`Exported ${files.length} panel(s) ✓`, 'success');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      toast(err instanceof Error ? err.message : 'Motion export failed', 'error');
+    } finally {
+      setRecordingMotion(null);
+    }
+  };
 
   const runVideo = async () => {
     await useProjectStore.getState().save();
@@ -41,6 +85,7 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
     try {
       const file = await exportPanoramaVideo(doc, {
         durationSec: videoDuration,
+        kenBurns,
         onProgress: (f) => setRecording(f),
       });
       downloadBlob(file.blob, file.name);
@@ -170,6 +215,17 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
                   setPrepared(null);
                 }}
               />
+              {videoExportSupported() && hasVideo && (
+                <TargetRow
+                  active={target === 'motion'}
+                  title="Motion panels (video)"
+                  subtitle="Panels with clips export as MP4/WebM; stills stay JPG"
+                  onClick={() => {
+                    setTarget('motion');
+                    setPrepared(null);
+                  }}
+                />
+              )}
               {videoExportSupported() && doc.panelCount > 1 && (
                 <TargetRow
                   active={target === 'video'}
@@ -201,6 +257,23 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
               value={videoDuration}
               onChange={setVideoDuration}
             />
+            <label className="flex items-center justify-between text-sm">
+              <span className="text-ink-500">Ken Burns zoom</span>
+              <button
+                role="switch"
+                aria-checked={kenBurns}
+                onClick={() => setKenBurns((v) => !v)}
+                className={`relative h-6 w-11 rounded-full transition-colors ${
+                  kenBurns ? 'bg-accent-500' : 'bg-ink-300 dark:bg-ink-600'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                    kenBurns ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </label>
             <p className="text-[11px] text-ink-400">
               Records in real time (≈{videoDuration + 2}s) at {doc.panelWidth}×{doc.panelHeight},
               WebM/MP4 depending on the browser.
@@ -208,7 +281,17 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           </section>
         )}
 
-        <section className={`space-y-2 ${target === 'video' ? 'hidden' : ''}`}>
+        {target === 'motion' && (
+          <section className="space-y-2">
+            <Slider label="Max clip length (s)" min={2} max={10} value={motionCap} onChange={setMotionCap} />
+            <p className="text-[11px] text-ink-400">
+              Each video panel records in real time (up to {motionCap}s); still panels export as
+              JPG. Bundled as a ZIP with your captions.
+            </p>
+          </section>
+        )}
+
+        <section className={`space-y-2 ${isVideoish ? 'hidden' : ''}`}>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Format</h4>
           <div className="flex gap-2">
             <button
@@ -245,7 +328,7 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           )}
         </section>
 
-        <section className={`space-y-2 ${target === 'video' ? 'hidden' : ''}`}>
+        <section className={`space-y-2 ${isVideoish ? 'hidden' : ''}`}>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Delivery</h4>
           <div className="flex gap-2">
             {shareSupported() && (
@@ -300,6 +383,16 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
               ? `Recording… ${Math.round(recording * 100)}%`
               : '⏺ Record panorama video'}
           </button>
+        ) : target === 'motion' ? (
+          <button
+            className="btn-primary w-full"
+            disabled={recordingMotion !== null}
+            onClick={() => void runMotion()}
+          >
+            {recordingMotion !== null
+              ? `Recording… ${Math.round(recordingMotion * 100)}%`
+              : '⏺ Export motion panels'}
+          </button>
         ) : delivery === 'share' ? (
           prepared ? (
             <button className="btn-primary w-full" onClick={shareNow}>
@@ -324,8 +417,8 @@ export default function ExportSheet({ onClose }: { onClose: () => void }) {
           </div>
         )}
         <p className="text-center text-[11px] text-ink-400">
-          Full-resolution originals are used — on-screen proxies never touch the export. Panoramic
-          MP4 export is planned for a later version.
+          Full-resolution originals are used — on-screen proxies never touch the export. Motion
+          panels record in real time; codec (MP4/WebM) depends on your browser.
         </p>
       </div>
     </Sheet>

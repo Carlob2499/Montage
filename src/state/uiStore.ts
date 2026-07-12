@@ -43,6 +43,9 @@ interface UIState {
   /** photo picker target: add layers vs fill a specific placeholder */
   pickerTarget: { kind: 'layer' } | { kind: 'fill'; layerId: string } | { kind: 'background' } | null;
   copiedStackPhotoId: string | null;
+  /** global play/pause for video-in-cell clips (default on) */
+  motion: boolean;
+  toggleMotion: () => void;
 
   go: (screen: Screen) => void;
   setAlbum: (id: string | null) => void;
@@ -76,6 +79,8 @@ export const useUIStore = create<UIState>((set) => ({
   showWelcome: () => set({ welcomed: false }),
   pickerTarget: null,
   copiedStackPhotoId: null,
+  motion: true,
+  toggleMotion: () => set((s) => ({ motion: !s.motion })),
 
   go: (screen) => set({ screen, sheet: 'none' }),
   setAlbum: (id) => set({ activeAlbumId: id }),

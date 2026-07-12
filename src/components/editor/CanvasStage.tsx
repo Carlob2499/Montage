@@ -13,6 +13,8 @@ import StickerNode from './nodes/StickerNode';
 import CardNode from './nodes/CardNode';
 import { gridUploadOrder } from '../../lib/slicer';
 import { useBlobImage } from '../../hooks/useBlobUrl';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../db/db';
 
 export interface GuideLines {
   vertical: number[];
@@ -35,6 +37,20 @@ export default function CanvasStage({
 
   const dims = useMemo(() => (doc ? canvasSize(doc) : { width: 1080, height: 1350 }), [doc]);
   const panelW = doc?.panelWidth ?? 1080;
+
+  // which of the doc's photo layers are actually videos (drives the autoplay cap)
+  const photoIdsKey = doc
+    ? doc.layers
+        .filter((l): l is PhotoLayer => l.type === 'photo' && !!l.photoId)
+        .map((l) => l.photoId)
+        .join(',')
+    : '';
+  const videoPhotoIds = useLiveQuery(async () => {
+    const ids = photoIdsKey ? photoIdsKey.split(',') : [];
+    if (!ids.length) return new Set<string>();
+    const rows = await db.photos.bulkGet(ids);
+    return new Set(rows.filter((r) => r?.kind === 'video').map((r) => r!.id));
+  }, [photoIdsKey]) ?? new Set<string>();
 
   // fit view on project / panel-count / geometry change
   const fitKey = doc
@@ -165,6 +181,16 @@ export default function CanvasStage({
 
   if (!doc) return null;
 
+  // iOS Safari drops video elements past a low simultaneous-play ceiling, so
+  // only the first few VIDEO layers autoplay; the rest hold their poster.
+  const MAX_CONCURRENT_VIDEOS = 8;
+  const playableVideoIds = new Set(
+    doc.layers
+      .filter((l) => l.type === 'photo' && l.photoId && videoPhotoIds.has(l.photoId))
+      .slice(0, MAX_CONCURRENT_VIDEOS)
+      .map((l) => l.id),
+  );
+
   const seams = doc.mode === 'carousel' ? seamPositions(doc.panelCount, doc.panelWidth) : [];
   const warnSeams = new Set<number>();
   for (const layer of doc.layers) {
@@ -210,6 +236,7 @@ export default function CanvasStage({
                 layer={layer as PhotoLayer}
                 onDragMove={handleDragMove}
                 onDragEnd={handleDragEnd}
+                canPlay={playableVideoIds.has(layer.id)}
               />
             ) : layer.type === 'text' ? (
               <TextNode
