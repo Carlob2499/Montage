@@ -13,6 +13,7 @@ for (const suite of [
   'smoke-curate.mjs',
   'smoke-library.mjs',
   'smoke-automontage.mjs',
+  'smoke-reel.mjs',
 ]) {
   console.log(`\n=== ${suite} ===`);
   const res = spawnSync('node', [`scripts/smoke/${suite}`], { stdio: 'inherit' });

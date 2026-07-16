@@ -1,16 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
 import { useMontageStore } from '../../state/montageStore';
 import { bundleZip, downloadBlob, exportPanels, loadResources, releaseResources, slug } from '../../lib/exporter';
 import { renderGridTile, renderPanel } from '../../lib/renderer';
 import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
+import { buildReelDoc, REEL_DURATIONS, DEFAULT_REEL_DURATION } from '../../lib/reel/buildReel';
+import { exportReelVideo, reelExportSupported } from '../../lib/reel/reelExport';
+import ReelPlayer from './ReelPlayer';
 import { db, uid } from '../../db/db';
 import Icon from '../shared/Icon';
 
+type Format = 'reel' | 'carousel';
+
 /**
- * Swipe simulation: pages through the sliced panels exactly as Instagram
- * would render them — scroll-snapped, with the panel counter chip.
+ * Preview: for an Auto Montage this defaults to the animated 9:16 Reel (the
+ * flagship output); a toggle drops to the seamless carousel. Non-montage
+ * projects keep the classic swipe/grid preview.
  */
 export default function PreviewScreen() {
   const doc = useProjectStore((s) => s.doc);
@@ -18,14 +24,34 @@ export default function PreviewScreen() {
   const toast = useUIStore((s) => s.toast);
   const recipe = useMontageStore((s) => s.recipe);
   const isMontage = !!recipe && !!doc && recipe.docId === doc.id;
+  const canReel = isMontage && reelExportSupported();
+
+  const [format, setFormat] = useState<Format>('reel');
+  const [reelSec, setReelSec] = useState<number>(DEFAULT_REEL_DURATION);
+  const showReel = canReel && format === 'reel';
+
   const [urls, setUrls] = useState<string[]>([]);
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [reelProgress, setReelProgress] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // the reel is derived from the SAME recipe as the carousel; it re-derives on
+  // shuffle (recipe.shuffles) and duration change. Memoized so the player isn't
+  // handed a fresh doc every render (which would reload its bitmaps).
+  const reelDoc = useMemo(() => {
+    if (!recipe) return null;
+    const seed = (recipe.album.id.length * 2654435761 + recipe.shuffles * 2246822519 + 1) >>> 0;
+    return buildReelDoc(recipe.album, recipe.picks, recipe.vibe, uid, {
+      seed,
+      durationSec: reelSec,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipe?.docId, recipe?.vibe, recipe?.shuffles, reelSec]);
+
   // regenerate the montage from the same best-shot picks with a fresh
-  // arrangement + theme — variety without re-importing or re-scoring
+  // arrangement + theme — varies both the carousel and the reel
   const shuffle = () => {
     if (!recipe) return;
     const n = recipe.shuffles + 1;
@@ -37,7 +63,26 @@ export default function PreviewScreen() {
     useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, vibe, shuffles: n });
   };
 
-  const exportMontage = async () => {
+  const exportReel = async () => {
+    if (!reelDoc) return;
+    setExporting(true);
+    setReelProgress(0);
+    try {
+      const { name, blob } = await exportReelVideo(reelDoc, {
+        onProgress: (f) => setReelProgress(f),
+      });
+      downloadBlob(blob, name);
+      toast('Reel saved ✓', 'success');
+    } catch (err) {
+      console.error(err);
+      toast(err instanceof Error ? err.message : 'Reel export failed', 'error');
+    } finally {
+      setExporting(false);
+      setReelProgress(null);
+    }
+  };
+
+  const exportCarousel = async () => {
     if (!doc) return;
     setExporting(true);
     try {
@@ -53,8 +98,9 @@ export default function PreviewScreen() {
     }
   };
 
+  // carousel panel thumbnails — skipped while the reel is on screen
   useEffect(() => {
-    if (!doc) return;
+    if (!doc || showReel) return;
     let cancelled = false;
     const made: string[] = [];
     (async () => {
@@ -67,10 +113,7 @@ export default function PreviewScreen() {
             doc.mode === 'grid'
               ? renderGridTile(doc, Math.floor(i / 3), i % 3, resources)
               : renderPanel(doc, i, resources);
-          // crisper preview: 0.92 (was 0.85) — gradients/skin no longer smear
           const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
-          // re-check AFTER the await: unmount cleanup already revoked made[],
-          // so a URL created now would leak for the page lifetime
           if (cancelled) break;
           made.push(URL.createObjectURL(blob));
           setUrls([...made]);
@@ -83,13 +126,13 @@ export default function PreviewScreen() {
       cancelled = true;
       for (const u of made) URL.revokeObjectURL(u);
     };
-  }, [doc]);
+  }, [doc, showReel]);
 
   const total = doc ? (doc.mode === 'grid' ? doc.panelCount * 3 : doc.panelCount) : 0;
 
-  // hands-free autoplay: advance one panel every 1.6s, looping back to start
+  // hands-free autoplay for the carousel view
   useEffect(() => {
-    if (!playing || !doc || doc.mode !== 'carousel' || total <= 1) return;
+    if (showReel || !playing || !doc || doc.mode !== 'carousel' || total <= 1) return;
     const id = setInterval(() => {
       const el = scrollRef.current;
       if (!el) return;
@@ -99,7 +142,7 @@ export default function PreviewScreen() {
       el.scrollTo({ left: target * w, behavior: 'smooth' });
     }, 1600);
     return () => clearInterval(id);
-  }, [playing, doc, total]);
+  }, [playing, doc, total, showReel]);
 
   if (!doc) return null;
 
@@ -123,7 +166,23 @@ export default function PreviewScreen() {
           </div>
         </div>
         <div className="flex-1" />
-        {doc.mode === 'carousel' && total > 1 && (
+        {/* Reel | Carousel format toggle (montage only) */}
+        {canReel && (
+          <div className="flex rounded-full bg-white/10 p-0.5 text-xs font-semibold">
+            {(['reel', 'carousel'] as Format[]).map((f) => (
+              <button
+                key={f}
+                className={`rounded-full px-3 py-1 capitalize transition-colors ${
+                  format === f ? 'bg-white text-black' : 'text-white/70'
+                }`}
+                onClick={() => setFormat(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
+        {!showReel && doc.mode === 'carousel' && total > 1 && (
           <button
             className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm"
             onClick={() => setPlaying((p) => !p)}
@@ -132,14 +191,16 @@ export default function PreviewScreen() {
             {playing ? '❚❚' : '▶'}
           </button>
         )}
-        {doc.mode === 'carousel' && (
+        {!showReel && doc.mode === 'carousel' && (
           <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium">
             {Math.min(current + 1, total)}/{total}
           </span>
         )}
       </header>
 
-      {doc.mode === 'carousel' ? (
+      {showReel && reelDoc ? (
+        <ReelPlayer doc={reelDoc} />
+      ) : doc.mode === 'carousel' ? (
         <>
           <div
             ref={scrollRef}
@@ -190,28 +251,57 @@ export default function PreviewScreen() {
           </div>
         </div>
       )}
+
       {isMontage && (
-        <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-          <button
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97]"
-            onClick={shuffle}
-          >
-            <Icon name="wand" size={18} /> Shuffle
-          </button>
-          <button
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97]"
-            onClick={() => go('editor')}
-          >
-            <Icon name="sliders" size={18} /> Edit
-          </button>
-          <button
-            className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-60"
-            style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #f472b6)' }}
-            disabled={exporting}
-            onClick={() => void exportMontage()}
-          >
-            <Icon name="download" size={18} /> {exporting ? 'Saving…' : 'Export'}
-          </button>
+        <div className="border-t border-white/10 px-4 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          {/* duration chips (reel only) */}
+          {showReel && (
+            <div className="mb-3 flex items-center justify-center gap-2">
+              {REEL_DURATIONS.map((s) => (
+                <button
+                  key={s}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    reelSec === s ? 'bg-white text-black' : 'bg-white/10 text-white/70'
+                  }`}
+                  onClick={() => setReelSec(s)}
+                  disabled={exporting}
+                >
+                  {s}s
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97] disabled:opacity-50"
+              onClick={shuffle}
+              disabled={exporting}
+            >
+              <Icon name="wand" size={18} /> Shuffle
+            </button>
+            <button
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97] disabled:opacity-50"
+              onClick={() => go('editor')}
+              disabled={exporting}
+            >
+              <Icon name="sliders" size={18} /> Edit
+            </button>
+            <button
+              className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-70"
+              style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #f472b6)' }}
+              disabled={exporting}
+              onClick={() => void (showReel ? exportReel() : exportCarousel())}
+            >
+              <Icon name="download" size={18} />
+              {exporting
+                ? reelProgress !== null
+                  ? `${Math.round(reelProgress * 100)}%`
+                  : 'Saving…'
+                : showReel
+                  ? 'Export reel'
+                  : 'Export'}
+            </button>
+          </div>
         </div>
       )}
       {!isMontage && <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]" />}

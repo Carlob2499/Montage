@@ -55,6 +55,19 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
    them); keep that cheap. A live frame is fed via `RenderResources.videos` (photoId →
    `HTMLVideoElement`); `paintPhotoLayer` prefers it over the poster bitmap. Motion export is
    real-time capture (a 4s panel takes 4s). Audio passthrough is a deliberate non-goal.
+7. **The Reel is a separate TEMPORAL path with its own parity rule.** A Story Reel
+   (`src/lib/reel/*`) is NOT a ProjectDoc — it's a timeline of full-bleed 9:16 slides (one
+   photo each, Ken Burns pan/zoom) with a cover/outro, built from the SAME montage recipe as
+   the carousel (`buildReelDoc` mirrors `buildAutoMontageDoc`, reuses `VIBE_THEMES`
+   ink/font/background). The parity rule (invariant #2) applies over time: ONE pure
+   `drawReelFrame(ctx, reelDoc, tMs, res)` (`reelFrame.ts`) is called by BOTH the in-app
+   player (`ReelPlayer.tsx`, rAF loop) and the exporter (`reelExport.ts`, `captureStream` +
+   MediaRecorder, real-time) — a player/export divergence is a bug. Ken Burns feeds the SAME
+   `coverCrop` the stills use (motion is expressed in zoom/pan space); motion is seeded per
+   slide index so it's deterministic and Shuffle varies it. Reel docs still go through
+   `normalizeReelDoc` (invariant #4). Codec is feature-detected (`pickMimeType`: MP4 on
+   Safari, WebM elsewhere). MediaRecorder output has no container duration — `video.duration`
+   is Infinity and `currentTime=0` decodes black; sample a frame only AFTER `play()`.
 
 ## Mobile/iOS constraints (bugs already paid for)
 
@@ -131,4 +144,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 206 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 225 tests.

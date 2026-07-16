@@ -22,9 +22,8 @@ await page.setInputFiles('input[accept="image/*,video/*"]', [
 ]);
 console.log('✓ dropped 3 photos into Auto Montage');
 
-// pipeline runs, then lands in the montage preview (Export button = montage bar)
-await page.waitForSelector('button:has-text("Export")', { timeout: 40000 });
-await page.waitForSelector('text=your auto montage', { timeout: 5000 });
+// pipeline runs, then lands in the montage preview (reel by default)
+await page.waitForSelector('text=your auto montage', { timeout: 40000 });
 console.log('✓ curated montage opened in Preview (zero editing)');
 
 // Shuffle regenerates it
@@ -32,7 +31,9 @@ await page.click('button:has-text("Shuffle")');
 await page.waitForTimeout(1500);
 console.log('✓ shuffle regenerated the montage');
 
-// Export saves a ZIP
+// switch to the carousel format and export the seamless-panel ZIP
+await page.click('button:has-text("carousel")');
+await page.waitForSelector('img[alt^="Panel"]', { timeout: 8000 });
 const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
 await page.click('button:has-text("Export")');
 const download = await downloadPromise;
