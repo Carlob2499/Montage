@@ -5,6 +5,7 @@ import { useMontageStore } from '../../state/montageStore';
 import { bundleZip, downloadBlob, exportPanels, loadResources, releaseResources, slug } from '../../lib/exporter';
 import { renderGridTile, renderPanel } from '../../lib/renderer';
 import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
+import type { VibeLabel } from '../../types';
 import { buildReelDoc, REEL_DURATIONS, DEFAULT_REEL_DURATION } from '../../lib/reel/buildReel';
 import { exportReelVideo, reelExportSupported } from '../../lib/reel/reelExport';
 import { decodeAudioFile } from '../../lib/audio/synth';
@@ -45,22 +46,69 @@ export default function PreviewScreen() {
   const [reelProgress, setReelProgress] = useState<number | null>(null);
   const [muted, setMuted] = useState(false);
   const [track, setTrack] = useState<UserTrack | null>(null);
+  const [titleOverride, setTitleOverride] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [excluded, setExcluded] = useState<string[]>([]);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
+  // reel picks = the recipe's story-ordered best-of minus any the user removed
+  // in the slide strip (kept ≥3 so the reel stays a reel)
+  const reelPicks = useMemo(() => {
+    if (!recipe) return [];
+    const kept = recipe.picks.filter((p) => !excluded.includes(p.id));
+    return kept.length >= 3 ? kept : recipe.picks;
+  }, [recipe?.docId, recipe?.picks, excluded]);
+
   // the reel is derived from the SAME recipe as the carousel; it re-derives on
-  // shuffle (recipe.shuffles) and duration change. Memoized so the player isn't
-  // handed a fresh doc every render (which would reload its bitmaps).
+  // shuffle (recipe.shuffles), duration, vibe, title edit, music, and slide
+  // removals. Memoized so the player isn't handed a fresh doc every render.
   const reelDoc = useMemo(() => {
     if (!recipe) return null;
     const seed = (recipe.album.id.length * 2654435761 + recipe.shuffles * 2246822519 + 1) >>> 0;
-    return buildReelDoc(recipe.album, recipe.picks, recipe.vibe, uid, {
+    return buildReelDoc(recipe.album, reelPicks, recipe.vibe, uid, {
       seed,
       durationSec: reelSec,
       beatCutsMs: track?.beatsMs,
+      title: titleOverride ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipe?.docId, recipe?.vibe, recipe?.shuffles, reelSec, track]);
+  }, [recipe?.docId, recipe?.vibe, recipe?.shuffles, reelSec, track, titleOverride, reelPicks]);
+
+  // slide-strip thumbnails for every pick (cheap 320px thumbs), loaded once
+  useEffect(() => {
+    if (!recipe) return;
+    let cancelled = false;
+    const made: string[] = [];
+    (async () => {
+      const map: Record<string, string> = {};
+      for (const p of recipe.picks) {
+        const row = await db.thumbs.get(p.id);
+        if (cancelled) break;
+        if (row) {
+          const u = URL.createObjectURL(row.blob);
+          made.push(u);
+          map[p.id] = u;
+        }
+      }
+      if (!cancelled) setThumbs(map);
+    })();
+    return () => {
+      cancelled = true;
+      for (const u of made) URL.revokeObjectURL(u);
+    };
+  }, [recipe?.docId]);
+
+  // apply a vibe directly (chip) — re-themes both the reel and the carousel
+  const applyVibe = (vibe: VibeLabel) => {
+    if (!recipe || vibe === recipe.vibe) return;
+    const seed = (recipe.album.id.length * 2654435761 + recipe.shuffles * 40503) >>> 0;
+    const next = buildAutoMontageDoc(recipe.album, recipe.picks, vibe, uid, { seed });
+    void db.projects.put(next);
+    useProjectStore.getState().loadProject(next);
+    useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, vibe });
+  };
 
   const onMusicPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -289,6 +337,87 @@ export default function PreviewScreen() {
 
       {isMontage && (
         <div className="border-t border-white/10 px-4 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          {/* reel editing: vibe chips, title, slide strip */}
+          {showReel && reelDoc && (
+            <div className="mb-3 space-y-2.5">
+              {/* vibe chips */}
+              <div className="scrollbar-none flex justify-center gap-1.5 overflow-x-auto">
+                {(['sunwashed', 'vibrant', 'moody', 'muted', 'mono'] as VibeLabel[]).map((v) => (
+                  <button
+                    key={v}
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold capitalize transition-colors ${
+                      recipe!.vibe === v ? 'bg-white text-black' : 'bg-white/10 text-white/70'
+                    }`}
+                    onClick={() => applyVibe(v)}
+                    disabled={exporting}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+
+              {/* editable cover title */}
+              <div className="flex items-center justify-center gap-2">
+                {editingTitle ? (
+                  <input
+                    autoFocus
+                    aria-label="Reel title"
+                    defaultValue={reelDoc.title}
+                    className="w-56 rounded-lg bg-white/10 px-3 py-1.5 text-center text-sm text-white outline-none ring-1 ring-white/20"
+                    onBlur={(e) => {
+                      setTitleOverride(e.target.value.trim() || recipe!.album.name);
+                      setEditingTitle(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="flex max-w-full items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-sm text-white/90"
+                    onClick={() => setEditingTitle(true)}
+                    disabled={exporting}
+                  >
+                    <span className="truncate">{reelDoc.title}</span>
+                    <Icon name="sliders" size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* slide strip — tap ✕ to drop a shot from the reel */}
+              <div className="scrollbar-none flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                {reelDoc.slides.map((s, i) => (
+                  <div key={s.photoId + i} className="relative shrink-0">
+                    <div className="h-12 w-9 overflow-hidden rounded-md bg-white/10">
+                      {thumbs[s.photoId] && (
+                        <img src={thumbs[s.photoId]} alt="" className="h-full w-full object-cover" />
+                      )}
+                    </div>
+                    {reelDoc.slides.length > 3 && (
+                      <button
+                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/80 text-[9px] leading-none text-white"
+                        onClick={() => setExcluded((x) => [...x, s.photoId])}
+                        aria-label="Remove slide"
+                        disabled={exporting}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {excluded.length > 0 && (
+                  <button
+                    className="ml-1 shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-white/70"
+                    onClick={() => setExcluded([])}
+                    disabled={exporting}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* duration + soundtrack controls (reel only) */}
           {showReel && (
             <div className="mb-3 flex flex-wrap items-center justify-center gap-2">

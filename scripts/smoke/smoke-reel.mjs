@@ -45,6 +45,22 @@ await page.click('button:has-text("reel")');
 await page.locator('canvas').first().waitFor({ timeout: 5000 });
 console.log('✓ toggled back to reel');
 
+// R5 editing: a vibe chip re-themes the reel (canvas changes)
+await page.waitForTimeout(700);
+const preVibe = await page.locator('canvas').first().screenshot();
+await page.click('button:has-text("Vibrant")');
+await page.waitForTimeout(1000);
+const postVibe = await page.locator('canvas').first().screenshot();
+if (Buffer.compare(preVibe, postVibe) === 0) errors.push('vibe chip did not re-theme the reel');
+else console.log('✓ vibe chip re-themed the reel');
+
+// R5 editing: the cover title is editable
+await page.click('button:has-text("Montage ·")');
+await page.fill('input[aria-label="Reel title"]', 'My Trip Reel');
+await page.keyboard.press('Enter');
+await page.waitForSelector('button:has-text("My Trip Reel")', { timeout: 4000 });
+console.log('✓ cover title edited');
+
 // pick the shortest reel for a fast capture
 await page.click('button:has-text("15s")');
 await page.waitForTimeout(300);

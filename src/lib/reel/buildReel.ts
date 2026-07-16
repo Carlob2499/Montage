@@ -122,7 +122,7 @@ export function buildReelDoc(
 
   return {
     id: makeId(),
-    name: album.name,
+    name: opts.title ?? album.name,
     width: REEL_WIDTH,
     height: REEL_HEIGHT,
     vibe,
