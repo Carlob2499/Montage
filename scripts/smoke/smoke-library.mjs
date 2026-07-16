@@ -46,7 +46,7 @@ await page.click('button:has-text("Favorites")'); // clear
 
 // new project → make an edit → check version history captures a snapshot
 await page.goto(BASE, { waitUntil: 'networkidle' });
-await page.click('text=+ New project');
+await page.click('text=New project');
 await page.fill('input[placeholder*="Project name"]', 'History Test');
 await page.click('button:has-text("Create")');
 await page.waitForSelector('canvas');

@@ -8,6 +8,7 @@ import { downloadBlob, slug } from '../../lib/exporter';
 import { normalizeProjectDoc } from '../../lib/projectSchema';
 import type { ProjectDoc, ProjectMode } from '../../types';
 import { ASPECT_PRESETS } from '../../types';
+import Icon from '../shared/Icon';
 
 export default function HomeScreen() {
   const go = useUIStore((s) => s.go);
@@ -88,7 +89,8 @@ export default function HomeScreen() {
 
       <div className="flex gap-2 pb-4">
         <button className="btn-primary flex-1" onClick={() => setShowNew(true)}>
-          + New project
+          <Icon name="plus" size={18} />
+          New project
         </button>
         <button className="btn-soft" onClick={() => importRef.current?.click()}>
           Import JSON
@@ -140,14 +142,14 @@ export default function HomeScreen() {
                 · {new Date(p.updatedAt).toLocaleString()}
               </div>
             </button>
-            <button className="btn-ghost px-2" title="Export JSON backup" onClick={() => exportJson(p)}>
-              ⤓
+            <button className="icon-btn" title="Export JSON backup" aria-label="Export JSON backup" onClick={() => exportJson(p)}>
+              <Icon name="download" size={20} />
             </button>
-            <button className="btn-ghost px-2" title="Duplicate" onClick={() => void duplicate(p)}>
-              ⧉
+            <button className="icon-btn" title="Duplicate" aria-label="Duplicate" onClick={() => void duplicate(p)}>
+              <Icon name="copy" size={20} />
             </button>
-            <button className="btn-ghost px-2 text-red-500" title="Delete" onClick={() => void remove(p)}>
-              🗑
+            <button className="icon-btn text-red-500" title="Delete" aria-label="Delete" onClick={() => void remove(p)}>
+              <Icon name="trash" size={20} />
             </button>
           </div>
         ))}

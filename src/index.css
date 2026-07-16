@@ -3,21 +3,34 @@
 @theme {
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --color-ink-50: #fafafa;
-  --color-ink-100: #f0f0f2;
-  --color-ink-200: #dcdce0;
-  --color-ink-300: #b8b8c0;
-  --color-ink-400: #8e8e98;
-  --color-ink-500: #6a6a74;
-  --color-ink-600: #4a4a52;
-  --color-ink-700: #303036;
-  --color-ink-800: #1e1e23;
-  --color-ink-900: #141418;
-  --color-ink-950: #0c0c0f;
-  --color-accent-300: #93c5fd;
-  --color-accent-400: #60a5fa;
-  --color-accent-500: #3b82f6;
-  --color-accent-600: #2563eb;
+  --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* neutral "ink" ramp — warm-cool balanced, deep blacks for OLED */
+  --color-ink-50: #f7f7f9;
+  --color-ink-100: #eeeef1;
+  --color-ink-200: #dedee3;
+  --color-ink-300: #bcbcc6;
+  --color-ink-400: #8b8b98;
+  --color-ink-500: #63636f;
+  --color-ink-600: #45454f;
+  --color-ink-700: #2b2b33;
+  --color-ink-800: #1a1a1f;
+  --color-ink-900: #121216;
+  --color-ink-950: #0a0a0d;
+
+  /* accent — electric violet, matches the brand gradient's violet end */
+  --color-accent-300: #c8b6ff;
+  --color-accent-400: #a689ff;
+  --color-accent-500: #7c5cff;
+  --color-accent-600: #6035e6;
+  --color-accent-700: #4b23c4;
+
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px -4px rgb(0 0 0 / 0.10);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.05), 0 12px 32px -8px rgb(0 0 0 / 0.18);
+  --shadow-accent: 0 6px 20px -6px rgb(124 92 255 / 0.55);
 }
 
 @font-face {
@@ -62,6 +75,7 @@ body {
   @apply bg-ink-50 text-ink-900 antialiased;
   font-family: var(--font-sans);
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -70,48 +84,98 @@ body {
   }
 }
 
-/* utility building blocks used across the app */
+/* keyboard users get a clear focus ring; pointer users don't */
+:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* --- surfaces + cards ---------------------------------------------------- */
 @utility surface {
   @apply bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700;
 }
 
+@utility card {
+  @apply surface rounded-2xl;
+  box-shadow: var(--shadow-soft);
+}
+
+/* --- buttons: 44px min touch target, clear hierarchy --------------------- */
 @utility btn {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-medium
-    transition-colors select-none cursor-pointer disabled:opacity-40 disabled:cursor-default;
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5
+    text-sm font-semibold leading-none select-none cursor-pointer
+    transition-[transform,background-color,box-shadow,opacity] duration-150
+    active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
 }
 
 @utility btn-primary {
-  @apply btn bg-accent-500 text-white active:bg-accent-600 hover:bg-accent-600;
-}
-
-@utility btn-ghost {
-  @apply btn bg-transparent text-ink-700 dark:text-ink-200 hover:bg-ink-100 dark:hover:bg-ink-800 active:bg-ink-200 dark:active:bg-ink-700;
+  @apply btn text-white hover:brightness-110;
+  background-image: linear-gradient(to bottom, var(--color-accent-400), var(--color-accent-600));
+  box-shadow: var(--shadow-accent);
 }
 
 @utility btn-soft {
-  @apply btn bg-ink-100 dark:bg-ink-800 text-ink-800 dark:text-ink-100 hover:bg-ink-200 dark:hover:bg-ink-700;
+  @apply btn bg-ink-100 dark:bg-ink-800 text-ink-800 dark:text-ink-100
+    hover:bg-ink-200 dark:hover:bg-ink-700;
+}
+
+@utility btn-ghost {
+  @apply btn bg-transparent text-ink-600 dark:text-ink-300
+    hover:bg-ink-100 dark:hover:bg-ink-800 active:bg-ink-200 dark:active:bg-ink-700;
+}
+
+/* square icon button — guaranteed 44px hit area */
+@utility icon-btn {
+  @apply inline-grid min-h-11 min-w-11 place-items-center rounded-xl bg-transparent
+    text-ink-600 dark:text-ink-300 transition-[transform,background-color] duration-150
+    active:scale-[0.94] hover:bg-ink-100 dark:hover:bg-ink-800 cursor-pointer
+    disabled:pointer-events-none disabled:opacity-40;
+}
+
+/* pill toggle / filter chip */
+@utility chip {
+  @apply inline-flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold
+    leading-none transition-colors duration-150 cursor-pointer select-none
+    bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300;
+}
+@utility chip-active {
+  @apply chip text-white;
+  background-image: linear-gradient(to bottom, var(--color-accent-400), var(--color-accent-600));
 }
 
 @utility input-base {
-  @apply w-full rounded-xl border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800
-    px-3 py-2.5 text-sm outline-none focus:border-accent-400 placeholder:text-ink-400;
+  @apply w-full min-h-11 rounded-xl border border-ink-200 dark:border-ink-700
+    bg-white dark:bg-ink-800 px-3.5 py-2.5 text-sm outline-none
+    transition-colors duration-150 placeholder:text-ink-400
+    focus:border-accent-400 focus:ring-2 focus:ring-accent-500/25;
 }
 
 @utility sheet {
-  @apply fixed inset-x-0 bottom-0 z-40 rounded-t-2xl bg-white dark:bg-ink-900
-    border-t border-ink-200 dark:border-ink-700 shadow-2xl
+  @apply fixed inset-x-0 bottom-0 z-40 rounded-t-3xl bg-white dark:bg-ink-900
+    border-t border-ink-200 dark:border-ink-700
     pb-[max(env(safe-area-inset-bottom),0.75rem)];
+  box-shadow: var(--shadow-lift);
 }
 
-/* range slider */
+/* --- range slider: larger, gradient track thumb ------------------------- */
 input[type='range'] {
-  @apply h-1.5 w-full appearance-none rounded-full bg-ink-200 dark:bg-ink-700 outline-none;
+  @apply h-2 w-full appearance-none rounded-full bg-ink-200 dark:bg-ink-700 outline-none;
 }
 input[type='range']::-webkit-slider-thumb {
-  @apply h-5 w-5 appearance-none rounded-full bg-accent-500 shadow;
+  @apply h-6 w-6 appearance-none rounded-full bg-accent-500 border-2 border-white dark:border-ink-900;
+  box-shadow: var(--shadow-soft);
 }
 input[type='range']::-moz-range-thumb {
-  @apply h-5 w-5 rounded-full bg-accent-500 border-0 shadow;
+  @apply h-6 w-6 rounded-full bg-accent-500 border-2 border-white dark:border-ink-900;
+  box-shadow: var(--shadow-soft);
 }
 
 .scrollbar-none {

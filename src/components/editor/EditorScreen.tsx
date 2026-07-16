@@ -14,6 +14,8 @@ import ExportSheet from './sheets/ExportSheet';
 import HistorySheet from './sheets/HistorySheet';
 import PhotoEditSheet from './PhotoEditSheet';
 import { addTextLayer } from './canvasActions';
+import Icon from '../shared/Icon';
+import type { IconName } from '../shared/Icon';
 import { layerBBox } from '../../lib/renderer';
 import { faceCanvasRect, suggestNudge, SEAM_MARGIN } from '../../lib/seamAssist';
 import { useFaceScan, faceDetectionSupported } from '../../hooks/useFaceScan';
@@ -80,46 +82,52 @@ export default function EditorScreen() {
   return (
     <div className="flex h-full flex-col">
       {/* top bar */}
-      <header className="z-10 flex items-center gap-1 border-b border-ink-200 bg-white/90 px-2 py-1.5 backdrop-blur dark:border-ink-700 dark:bg-ink-900/90 pt-[max(env(safe-area-inset-top),0.375rem)]">
+      <header className="z-10 flex items-center gap-0.5 border-b border-ink-200 bg-white/85 px-2 py-2 backdrop-blur-xl dark:border-ink-700 dark:bg-ink-900/85 pt-[max(env(safe-area-inset-top),0.5rem)]">
         <button
-          className="btn-ghost px-2"
+          className="icon-btn"
+          aria-label="Back to projects"
           onClick={async () => {
             await useProjectStore.getState().save();
             go('home');
           }}
         >
-          ←
+          <Icon name="chevron-left" />
         </button>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 px-1">
           <div className="truncate text-sm font-semibold leading-tight">{doc.name}</div>
-          <div className="text-[11px] leading-tight text-ink-400">
-            {doc.mode === 'grid' ? `3×${doc.panelCount} grid` : `${doc.panelCount} panels · ${doc.aspect}`}
-            {dirty ? ' · unsaved' : ' · saved'}
+          <div className="flex items-center gap-1.5 overflow-hidden text-[11px] leading-tight text-ink-400">
+            <span
+              className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dirty ? 'bg-amber-400' : 'bg-emerald-400'}`}
+              title={dirty ? 'Unsaved changes' : 'Saved'}
+            />
+            <span className="truncate">
+              {doc.mode === 'grid' ? `3×${doc.panelCount} grid` : `${doc.panelCount} panels · ${doc.aspect}`}
+            </span>
           </div>
         </div>
-        <UndoRedo />
         <button
-          className="btn-ghost px-2"
+          className="icon-btn"
           title="Version history"
           aria-label="Version history"
           onClick={() => openSheet('history')}
         >
-          🕓
+          <Icon name="clock" />
         </button>
         {hasVideo && (
           <button
-            className="btn-ghost px-2"
+            className="icon-btn"
             title={motion ? 'Pause clips' : 'Play clips'}
             aria-label={motion ? 'Pause clips' : 'Play clips'}
             onClick={() => useUIStore.getState().toggleMotion()}
           >
-            {motion ? '❚❚' : '▶'}
+            <Icon name={motion ? 'pause' : 'play'} filled={!motion} />
           </button>
         )}
-        <button className="btn-ghost px-2.5 text-sm" onClick={() => go('preview')}>
-          Preview
+        <button className="icon-btn" aria-label="Preview" title="Preview" onClick={() => go('preview')}>
+          <Icon name="eye" />
         </button>
-        <button className="btn-primary px-3 py-1.5 text-sm" onClick={() => openSheet('export')}>
+        <button className="btn-primary px-4" onClick={() => openSheet('export')}>
+          <Icon name="share" size={18} />
           Export
         </button>
       </header>
@@ -130,20 +138,20 @@ export default function EditorScreen() {
       {/* canvas */}
       <div ref={viewportRef} className="relative min-h-0 flex-1 overflow-hidden bg-ink-100 dark:bg-ink-950">
         <CanvasStage viewport={viewport} />
-        {selectedIds.length > 0 && <SelectionBar />}
+        {selectedIds.length === 0 ? <UndoRedo /> : <SelectionBar />}
       </div>
 
       {/* bottom toolbar */}
-      <nav className="z-10 flex items-stretch justify-around border-t border-ink-200 bg-white/95 backdrop-blur dark:border-ink-700 dark:bg-ink-900/95 pb-[max(env(safe-area-inset-bottom),0.25rem)]">
-        <ToolButton icon="🖼" label="Photos" onClick={() => {
+      <nav className="z-10 flex items-stretch justify-around border-t border-ink-200 bg-white/95 backdrop-blur-xl dark:border-ink-700 dark:bg-ink-900/95 pb-[max(env(safe-area-inset-bottom),0.25rem)]">
+        <ToolButton icon="image" label="Photos" onClick={() => {
           useUIStore.getState().setPickerTarget({ kind: 'layer' });
           go('library');
         }} />
-        <ToolButton icon="🅃" label="Text" onClick={() => { addTextLayer(); openSheet('text'); }} />
-        <ToolButton icon="▦" label="Layouts" onClick={() => openSheet('templates')} />
-        <ToolButton icon="🎨" label="Backdrop" onClick={() => openSheet('background')} />
-        <ToolButton icon="⬚" label="Panels" onClick={() => openSheet('panels')} />
-        <ToolButton icon="≣" label="Layers" onClick={() => openSheet('layers')} />
+        <ToolButton icon="text" label="Text" onClick={() => { addTextLayer(); openSheet('text'); }} />
+        <ToolButton icon="layout" label="Layouts" onClick={() => openSheet('templates')} />
+        <ToolButton icon="palette" label="Backdrop" onClick={() => openSheet('background')} />
+        <ToolButton icon="panels" label="Panels" onClick={() => openSheet('panels')} />
+        <ToolButton icon="layers" label="Layers" onClick={() => openSheet('layers')} />
       </nav>
 
       {/* sheets */}
@@ -262,25 +270,29 @@ function SeamSafetyBanner() {
 function UndoRedo() {
   const canUndo = useProjectStore((s) => s.past.length > 0);
   const canRedo = useProjectStore((s) => s.future.length > 0);
+  if (!canUndo && !canRedo) return null;
   return (
-    <>
+    <div className="absolute bottom-3 left-3 flex overflow-hidden rounded-2xl border border-ink-200/70 bg-white/85 backdrop-blur-md dark:border-ink-700/70 dark:bg-ink-900/85" style={{ boxShadow: 'var(--shadow-soft)' }}>
       <button
-        className="btn-ghost px-2"
+        className="grid h-11 w-11 place-items-center text-ink-600 disabled:opacity-30 active:bg-ink-100 dark:text-ink-300 dark:active:bg-ink-800"
         disabled={!canUndo}
         onClick={() => useProjectStore.getState().undo()}
         title="Undo (⌘Z)"
+        aria-label="Undo"
       >
-        ↺
+        <Icon name="undo" />
       </button>
+      <div className="my-2 w-px bg-ink-200 dark:bg-ink-700" />
       <button
-        className="btn-ghost px-2"
+        className="grid h-11 w-11 place-items-center text-ink-600 disabled:opacity-30 active:bg-ink-100 dark:text-ink-300 dark:active:bg-ink-800"
         disabled={!canRedo}
         onClick={() => useProjectStore.getState().redo()}
         title="Redo (⇧⌘Z)"
+        aria-label="Redo"
       >
-        ↻
+        <Icon name="redo" />
       </button>
-    </>
+    </div>
   );
 }
 
@@ -344,14 +356,14 @@ function SelectionBar() {
   );
 }
 
-function ToolButton({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+function ToolButton({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
   return (
     <button
-      className="flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2 text-ink-600 active:bg-ink-100 dark:text-ink-300 dark:active:bg-ink-800"
+      className="flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-ink-500 transition-colors active:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:active:bg-ink-800 dark:hover:text-ink-100"
       onClick={onClick}
     >
-      <span className="text-lg leading-none">{icon}</span>
-      <span className="text-[10px] font-medium">{label}</span>
+      <Icon name={icon} size={22} />
+      <span className="text-[10px] font-semibold tracking-wide">{label}</span>
     </button>
   );
 }

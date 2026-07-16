@@ -32,7 +32,7 @@ if (!canRecord) {
   process.exit(0);
 }
 
-await page.click('text=+ New project');
+await page.click('text=New project');
 await page.fill('input[placeholder*="Project name"]', 'Motion Test');
 await page.click('button:has-text("Create")');
 await page.waitForSelector('canvas');

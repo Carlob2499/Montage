@@ -17,6 +17,7 @@ import type { AlbumRecord, PhotoRecord, SortMode, VibeLabel } from '../../types'
 import { addPhotoLayersToProject, applyAutoLayout } from '../editor/canvasActions';
 import PhotoEditSheet from '../editor/PhotoEditSheet';
 import TripMap from './TripMap';
+import Icon from '../shared/Icon';
 
 export default function LibraryScreen() {
   const go = useUIStore((s) => s.go);
@@ -374,10 +375,10 @@ export default function LibraryScreen() {
       {album && (photos?.length ?? 0) > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2">
           <FilterChip active={filterFav} onClick={() => setFilterFav((v) => !v)}>
-            ♥ Favorites
+            <Icon name="heart" size={14} filled={filterFav} /> Favorites
           </FilterChip>
           <FilterChip active={filterLocated} onClick={() => setFilterLocated((v) => !v)}>
-            📍 Located
+            <Icon name="pin" size={14} /> Located
           </FilterChip>
           {months.length > 1 && (
             <select
@@ -406,11 +407,8 @@ export default function LibraryScreen() {
             </button>
           )}
           {(photos?.some((p) => p.gps) ?? false) && (
-            <button
-              className="rounded-lg bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-600 dark:bg-ink-800 dark:text-ink-300"
-              onClick={() => setShowMap(true)}
-            >
-              📍 Map
+            <button className="chip" onClick={() => setShowMap(true)}>
+              <Icon name="pin" size={14} /> Map
             </button>
           )}
           <span className="ml-auto text-xs text-ink-400">{shown.length} shown</span>
@@ -714,14 +712,7 @@ function FilterChip({
   children: ReactNode;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-lg px-2.5 py-1 text-xs font-medium ${
-        active
-          ? 'bg-accent-500 text-white'
-          : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
-      }`}
-    >
+    <button onClick={onClick} className={active ? 'chip-active' : 'chip'}>
       {children}
     </button>
   );
@@ -767,34 +758,36 @@ function PhotoThumb({
       )}
       {photo.scores && photo.scores.quality >= 0.7 && (
         <span
-          className="absolute left-1 top-1 rounded bg-amber-400/90 px-1 text-[10px] text-black"
+          className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-amber-400 text-black shadow"
           title="Top pick"
         >
-          ★
+          <Icon name="star" size={12} filled strokeWidth={1.5} />
         </span>
       )}
       {photo.kind === 'video' && (
-        <span className="absolute left-1 top-6 rounded bg-black/60 px-1 text-[10px] text-white">▶ video</span>
+        <span className="absolute left-1 top-7 flex items-center gap-0.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+          <Icon name="play" size={9} filled strokeWidth={1.5} /> video
+        </span>
       )}
       {photo.duplicateOf && (
-        <span className="absolute right-1 top-1 rounded bg-amber-500/90 px-1 text-[10px] text-white">dupe</span>
+        <span className="absolute right-1 top-1 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-medium text-white">dupe</span>
       )}
       {!selecting && (
         <span
           role="button"
           aria-label={photo.favorite ? 'Unfavorite' : 'Favorite'}
           title={photo.favorite ? 'Unfavorite' : 'Favorite'}
-          className={`absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full text-sm ${
-            photo.favorite ? 'text-rose-400' : 'text-white/70'
+          className={`absolute bottom-1 right-1 grid h-8 w-8 place-items-center rounded-full transition-transform active:scale-90 ${
+            photo.favorite ? 'text-rose-500' : 'text-white/80'
           }`}
-          style={{ textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}
+          style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.55))' }}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
             void db.photos.update(photo.id, { favorite: !photo.favorite });
           }}
         >
-          {photo.favorite ? '♥' : '♡'}
+          <Icon name="heart" size={18} filled={!!photo.favorite} strokeWidth={2} />
         </span>
       )}
       {photo.tags.length > 0 && (

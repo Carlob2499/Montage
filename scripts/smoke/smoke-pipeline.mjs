@@ -7,7 +7,7 @@ import { BASE, launchPage, reportAndExit } from './browser.mjs';
 const { browser, page, errors } = await launchPage();
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
-await page.click('text=+ New project');
+await page.click('text=New project');
 await page.fill('input[placeholder*="Project name"]', 'Import Test');
 await page.click('button:has-text("Create")');
 await page.waitForSelector('canvas');
