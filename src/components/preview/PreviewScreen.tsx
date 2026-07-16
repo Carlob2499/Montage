@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
-import { loadResources, releaseResources } from '../../lib/exporter';
+import { useMontageStore } from '../../state/montageStore';
+import { bundleZip, downloadBlob, exportPanels, loadResources, releaseResources, slug } from '../../lib/exporter';
 import { renderGridTile, renderPanel } from '../../lib/renderer';
+import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
+import { db, uid } from '../../db/db';
+import Icon from '../shared/Icon';
 
 /**
  * Swipe simulation: pages through the sliced panels exactly as Instagram
@@ -11,10 +15,43 @@ import { renderGridTile, renderPanel } from '../../lib/renderer';
 export default function PreviewScreen() {
   const doc = useProjectStore((s) => s.doc);
   const go = useUIStore((s) => s.go);
+  const toast = useUIStore((s) => s.toast);
+  const recipe = useMontageStore((s) => s.recipe);
+  const isMontage = !!recipe && !!doc && recipe.docId === doc.id;
   const [urls, setUrls] = useState<string[]>([]);
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // regenerate the montage from the same best-shot picks with a fresh
+  // arrangement + theme — variety without re-importing or re-scoring
+  const shuffle = () => {
+    if (!recipe) return;
+    const n = recipe.shuffles + 1;
+    const vibe = VIBE_CYCLE[n % VIBE_CYCLE.length];
+    const seed = (recipe.album.id.length * 2654435761 + n * 40503) >>> 0;
+    const next = buildAutoMontageDoc(recipe.album, recipe.picks, vibe, uid, { seed });
+    void db.projects.put(next);
+    useProjectStore.getState().loadProject(next);
+    useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, vibe, shuffles: n });
+  };
+
+  const exportMontage = async () => {
+    if (!doc) return;
+    setExporting(true);
+    try {
+      const files = await exportPanels(doc, { format: 'image/jpeg', quality: 0.92 });
+      const zip = await bundleZip(doc, files);
+      downloadBlob(zip, `${slug(doc.name)}.zip`);
+      toast(`Saved ${files.length} panels ✓`, 'success');
+    } catch (err) {
+      console.error(err);
+      toast(err instanceof Error ? err.message : 'Export failed', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     if (!doc) return;
@@ -69,14 +106,20 @@ export default function PreviewScreen() {
   return (
     <div className="flex h-full flex-col bg-black text-white">
       <header className="flex items-center gap-2 px-3 py-2 pt-[max(env(safe-area-inset-top),0.5rem)]">
-        <button className="btn-ghost px-2 text-white" onClick={() => go('editor')}>
-          ←
+        <button
+          className="icon-btn text-white hover:bg-white/10"
+          aria-label="Back"
+          onClick={() => go(isMontage ? 'home' : 'editor')}
+        >
+          <Icon name="chevron-left" />
         </button>
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-400 to-fuchsia-500" />
           <div>
             <div className="text-sm font-semibold leading-tight">you</div>
-            <div className="text-[11px] leading-tight text-white/50">swipe preview</div>
+            <div className="text-[11px] leading-tight text-white/50">
+              {isMontage ? 'your auto montage' : 'swipe preview'}
+            </div>
           </div>
         </div>
         <div className="flex-1" />
@@ -147,7 +190,31 @@ export default function PreviewScreen() {
           </div>
         </div>
       )}
-      <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]" />
+      {isMontage && (
+        <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          <button
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97]"
+            onClick={shuffle}
+          >
+            <Icon name="wand" size={18} /> Shuffle
+          </button>
+          <button
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97]"
+            onClick={() => go('editor')}
+          >
+            <Icon name="sliders" size={18} /> Edit
+          </button>
+          <button
+            className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-60"
+            style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #f472b6)' }}
+            disabled={exporting}
+            onClick={() => void exportMontage()}
+          >
+            <Icon name="download" size={18} /> {exporting ? 'Saving…' : 'Export'}
+          </button>
+        </div>
+      )}
+      {!isMontage && <div className="pb-[max(env(safe-area-inset-bottom),0.5rem)]" />}
     </div>
   );
 }

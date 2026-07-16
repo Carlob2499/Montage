@@ -51,6 +51,17 @@ describe('buildAutoMontageDoc', () => {
     }
   });
 
+  it('an explicit seed varies the arrangement (Shuffle)', () => {
+    let a = 0;
+    let b = 0;
+    const base = buildAutoMontageDoc(album, picks, 'vibrant', () => `a${a++}`);
+    const shuffled = buildAutoMontageDoc(album, picks, 'vibrant', () => `b${b++}`, { seed: 999 });
+    const geomBase = base.layers.filter((l) => l.type === 'photo').map((l) => [l.x, l.y]);
+    const geomShuf = shuffled.layers.filter((l) => l.type === 'photo').map((l) => [l.x, l.y]);
+    // same picks, different layout seed → at least one photo moved
+    expect(geomShuf).not.toEqual(geomBase);
+  });
+
   it('is deterministic for the same album + picks', () => {
     let a = 0;
     let b = 100;

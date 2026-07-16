@@ -120,8 +120,15 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   `buildRecapDoc` (extended with a bg/frame/seed override) and the SAME
   recap→editor path. Everything here stays 100% offline. Advisory, never destructive —
   the user always gets an editable draft and can override the detected vibe.
+- **One-tap Auto Montage** (`createMontageFromFiles` in `src/lib/curation/autoMontageFlow.ts`)
+  is the flagship zero-edit path: a Home hero takes a photo dump → new album → import → score
+  → `curateAlbum` → `buildAutoMontageDoc` → lands in **Preview** (not the editor) with
+  Shuffle/Edit/Export. `montageStore` holds the recipe (album+picks+vibe+docId) so Shuffle
+  rebuilds from the SAME best-shot picks with a new seed/vibe (no re-import/re-score);
+  `recipe.docId === doc.id` gates the montage UI so a stale recipe never leaks onto another
+  project. Export from Preview is a direct panels→ZIP save (no editor round-trip).
 
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 205 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 206 tests.

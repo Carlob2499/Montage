@@ -86,13 +86,19 @@ export function buildAutoMontageDoc(
   picks: PhotoRecord[],
   vibe: VibeLabel,
   makeId: () => string,
+  opts: { seed?: number } = {},
 ): ProjectDoc {
   const theme = VIBE_THEMES[vibe] ?? VIBE_THEMES.muted;
   const doc = buildRecapDoc(album, picks, makeId, {
     background: theme.background,
     frameStyle: theme.frameStyle,
-    seed: seedFromId(album.id),
+    // an explicit seed (from Shuffle) varies the arrangement; otherwise the
+    // layout is deterministic per album
+    seed: opts.seed ?? seedFromId(album.id),
     nameSuffix: ' — montage',
   });
   return { ...doc, templateId: `vibe:${vibe}` };
 }
+
+/** the vibes in shuffle order, so re-generating cycles palettes/frames */
+export const VIBE_CYCLE: VibeLabel[] = ['sunwashed', 'vibrant', 'moody', 'muted', 'mono'];

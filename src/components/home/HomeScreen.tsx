@@ -9,12 +9,44 @@ import { normalizeProjectDoc } from '../../lib/projectSchema';
 import type { ProjectDoc, ProjectMode } from '../../types';
 import { ASPECT_PRESETS } from '../../types';
 import Icon from '../shared/Icon';
+import { createMontageFromFiles } from '../../lib/curation/autoMontageFlow';
+import type { MontageProgress } from '../../lib/curation/autoMontageFlow';
+import { useMontageStore } from '../../state/montageStore';
+
+const STAGE_LABEL: Record<MontageProgress['stage'], string> = {
+  importing: 'Importing your photos',
+  scoring: 'Picking the best shots',
+  stitching: 'Stitching your montage',
+};
 
 export default function HomeScreen() {
   const go = useUIStore((s) => s.go);
   const toast = useUIStore((s) => s.toast);
   const projects = useLiveQuery(() => db.projects.orderBy('updatedAt').reverse().toArray(), []);
   const [showNew, setShowNew] = useState(false);
+  const [montaging, setMontaging] = useState<MontageProgress | null>(null);
+  const montageRef = useRef<HTMLInputElement>(null);
+
+  const runAutoMontage = async (files: File[]) => {
+    setMontaging({ stage: 'importing', done: 0, total: files.length });
+    try {
+      const res = await createMontageFromFiles(files, setMontaging);
+      useMontageStore.getState().setRecipe({
+        docId: res.doc.id,
+        album: res.album,
+        picks: res.picks,
+        vibe: res.vibe,
+        shuffles: 0,
+      });
+      useProjectStore.getState().loadProject(res.doc);
+      go('preview');
+    } catch (err) {
+      console.error(err);
+      toast(err instanceof Error ? err.message : 'Could not create montage', 'error');
+    } finally {
+      setMontaging(null);
+    }
+  };
   const importRef = useRef<HTMLInputElement>(null);
 
   const openProject = (doc: ProjectDoc) => {
@@ -87,8 +119,38 @@ export default function HomeScreen() {
         </button>
       </header>
 
+      {/* one-tap flagship: dump photos → finished curated montage */}
+      <button
+        className="group relative mb-3 flex w-full items-center gap-3 overflow-hidden rounded-2xl p-4 text-left text-white shadow-lg transition-transform active:scale-[0.99]"
+        style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #a689ff 45%, #f472b6)' }}
+        onClick={() => montageRef.current?.click()}
+      >
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/20">
+          <Icon name="sparkles" size={24} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-base font-bold leading-tight">Auto Montage</span>
+          <span className="block text-xs text-white/85">
+            Dump your photos — I’ll pick the best & stitch them
+          </span>
+        </span>
+        <Icon name="chevron-right" size={20} className="text-white/70" />
+      </button>
+      <input
+        ref={montageRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          if (files.length) void runAutoMontage(files);
+        }}
+      />
+
       <div className="flex gap-2 pb-4">
-        <button className="btn-primary flex-1" onClick={() => setShowNew(true)}>
+        <button className="btn-soft flex-1" onClick={() => setShowNew(true)}>
           <Icon name="plus" size={18} />
           New project
         </button>
@@ -156,6 +218,31 @@ export default function HomeScreen() {
       </div>
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} onCreate={openProject} />}
+      {montaging && <MontageProgressOverlay progress={montaging} />}
+    </div>
+  );
+}
+
+function MontageProgressOverlay({ progress }: { progress: MontageProgress }) {
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm">
+      <div className="card w-[300px] p-6 text-center">
+        <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl text-white" style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #f472b6)' }}>
+          <Icon name="sparkles" size={28} />
+        </div>
+        <div className="font-display text-base font-bold">Creating your montage…</div>
+        <div className="mt-1 text-xs text-ink-400">
+          {STAGE_LABEL[progress.stage]}
+          {progress.total > 1 ? ` · ${progress.done}/${progress.total}` : ''}
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-700">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, backgroundImage: 'linear-gradient(90deg, #7c5cff, #f472b6)' }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
