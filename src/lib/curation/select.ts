@@ -121,7 +121,12 @@ export function curateAlbum(photos: PhotoRecord[], opts: CurationOptions = {}): 
   const { reps, dupes } = dedupe(sorted, dedupThreshold);
   for (const id of dupes) rejected.push({ id, reason: 'duplicate' });
 
-  const targetCount = Math.max(1, opts.targetCount ?? Math.min(24, Math.max(6, Math.round(reps.length * 0.6))));
+  // default to a tight, punchy best-of: a montage of 6–12 strong frames reads
+  // far better than dumping half the roll (callers can override targetCount).
+  const targetCount = Math.max(
+    1,
+    opts.targetCount ?? Math.min(12, Math.max(6, Math.round(reps.length * 0.5))),
+  );
   const vibe = opts.vibe ?? dominantVibe(reps);
 
   // quality floor, but never starve the target

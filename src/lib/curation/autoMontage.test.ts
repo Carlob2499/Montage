@@ -51,6 +51,24 @@ describe('buildAutoMontageDoc', () => {
     }
   });
 
+  it('themes cover text ink + font per vibe (readable on the vibe bg)', () => {
+    for (const vibe of ['sunwashed', 'moody', 'vibrant', 'muted', 'mono'] as VibeLabel[]) {
+      const theme = VIBE_THEMES[vibe];
+      const doc = buildAutoMontageDoc(album, picks, vibe, makeId);
+      const texts = doc.layers.filter((l) => l.type === 'text');
+      // the big title carries the vibe title ink + title face
+      const title = texts.find((l) => l.type === 'text' && l.text === album.name);
+      expect(title && 'fill' in title && title.fill).toBe(theme.ink.title);
+      expect(title && 'fontFamily' in title && title.fontFamily).toBe(theme.font.title);
+      // every cover/outro string uses one of the theme's three inks — no
+      // stray default cream leaking onto a light background
+      const inks = new Set([theme.ink.title, theme.ink.accent, theme.ink.body]);
+      for (const t of texts) {
+        if (t.type === 'text') expect(inks.has(t.fill)).toBe(true);
+      }
+    }
+  });
+
   it('an explicit seed varies the arrangement (Shuffle)', () => {
     let a = 0;
     let b = 0;

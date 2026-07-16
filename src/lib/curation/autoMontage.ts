@@ -6,12 +6,20 @@
 
 import type { AlbumRecord, Background, FrameStyle, PhotoRecord, VibeLabel } from '../../types';
 import { buildRecapDoc } from '../recap';
+import type { CoverFont, CoverInk } from '../recap';
 import type { ProjectDoc } from '../../types';
 
 interface VibeTheme {
   background: Background;
   frameStyle?: FrameStyle;
+  /** cover text colors, chosen for contrast against `background` */
+  ink: CoverInk;
+  /** cover typefaces matched to the mood */
+  font: CoverFont;
 }
+
+const SERIF: CoverFont = { title: 'Playfair Display', body: 'Space Grotesk', outro: 'Caveat' };
+const GROTESK: CoverFont = { title: 'Space Grotesk', body: 'Space Grotesk', outro: 'Space Grotesk' };
 
 const lin = (angle: number, stops: { color: string; at: number }[]): Background => ({
   kind: 'linear',
@@ -31,6 +39,8 @@ export const VIBE_THEMES: Record<VibeLabel, VibeTheme> = {
       { color: '#fde9c8', at: 1 },
     ]),
     frameStyle: 'polaroid',
+    ink: { title: '#fff7ec', accent: '#ffd9a8', body: '#fff1dd' },
+    font: SERIF,
   },
   moody: {
     background: lin(165, [
@@ -39,6 +49,8 @@ export const VIBE_THEMES: Record<VibeLabel, VibeTheme> = {
       { color: '#334155', at: 1 },
     ]),
     frameStyle: 'torn',
+    ink: { title: '#f1f5f9', accent: '#93a7c4', body: '#cbd5e1' },
+    font: { title: 'Playfair Display', body: 'Space Grotesk', outro: 'Playfair Display' },
   },
   vibrant: {
     background: lin(140, [
@@ -48,6 +60,8 @@ export const VIBE_THEMES: Record<VibeLabel, VibeTheme> = {
       { color: '#f9a8d4', at: 1 },
     ]),
     frameStyle: 'tape',
+    ink: { title: '#ffffff', accent: '#fde68a', body: '#fbe4ff' },
+    font: GROTESK,
   },
   muted: {
     background: lin(150, [
@@ -56,6 +70,9 @@ export const VIBE_THEMES: Record<VibeLabel, VibeTheme> = {
       { color: '#b8ab98', at: 1 },
     ]),
     frameStyle: 'polaroid',
+    // light background → DARK ink for readable contrast
+    ink: { title: '#2b2b33', accent: '#6035e6', body: '#45454f' },
+    font: SERIF,
   },
   mono: {
     background: lin(160, [
@@ -64,6 +81,8 @@ export const VIBE_THEMES: Record<VibeLabel, VibeTheme> = {
       { color: '#a1a1aa', at: 1 },
     ]),
     frameStyle: 'torn',
+    ink: { title: '#fafafa', accent: '#a1a1aa', body: '#d4d4d8' },
+    font: GROTESK,
   },
 };
 
@@ -96,6 +115,8 @@ export function buildAutoMontageDoc(
     // layout is deterministic per album
     seed: opts.seed ?? seedFromId(album.id),
     nameSuffix: ' — montage',
+    coverInk: theme.ink,
+    coverFont: theme.font,
   });
   return { ...doc, templateId: `vibe:${vibe}` };
 }

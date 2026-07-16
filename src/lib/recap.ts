@@ -16,6 +16,19 @@ import { PANEL_WIDTH, PANEL_HEIGHTS } from '../types';
 import { autoLayout, suggestedPanelCount } from './autoLayout';
 
 /** Optional style overrides so callers (e.g. Auto Montage) can theme the recap. */
+/** cover/outro text colors — override for contrast against the vibe background */
+export interface CoverInk {
+  title: string;
+  accent: string;
+  body: string;
+}
+/** cover/outro typefaces */
+export interface CoverFont {
+  title: string;
+  body: string;
+  outro: string;
+}
+
 export interface RecapOptions {
   background?: Background;
   frameStyle?: FrameStyle;
@@ -23,6 +36,22 @@ export interface RecapOptions {
   seed?: number;
   /** override the "— recap" name suffix */
   nameSuffix?: string;
+  /** cover text colors (default reads on a dark background) */
+  coverInk?: CoverInk;
+  /** cover typefaces */
+  coverFont?: CoverFont;
+}
+
+const DEFAULT_INK: CoverInk = { title: '#fdf6ec', accent: '#f0c987', body: '#fdf6ec' };
+const DEFAULT_FONT: CoverFont = {
+  title: 'Playfair Display',
+  body: 'Space Grotesk',
+  outro: 'Caveat',
+};
+
+/** grammatical count, e.g. 1 photo / 3 photos */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
 const DEFAULT_BACKGROUND: Background = {
@@ -109,6 +138,8 @@ export function buildRecapDoc(
   const frameStyle = opts.frameStyle ?? 'polaroid';
   const background = opts.background ?? DEFAULT_BACKGROUND;
   const seed = opts.seed ?? 7;
+  const ink = opts.coverInk ?? DEFAULT_INK;
+  const font = opts.coverFont ?? DEFAULT_FONT;
   const stats = computeRecapStats(photos);
   const aspect = '4:5' as const;
   const height = PANEL_HEIGHTS[aspect];
@@ -125,8 +156,8 @@ export function buildRecapDoc(
   );
 
   const statLines = [
-    `${stats.photoCount} photos`,
-    stats.days > 1 ? `${stats.days} days` : null,
+    plural(stats.photoCount, 'photo'),
+    stats.days > 1 ? plural(stats.days, 'day') : null,
     stats.distanceKm && stats.distanceKm > 1 ? `${Math.round(stats.distanceKm)} km wandered` : null,
   ].filter(Boolean);
 
@@ -139,12 +170,12 @@ export function buildRecapDoc(
       y: height * 0.3,
       rotation: 0,
       opacity: 1,
-      fontFamily: 'Playfair Display',
+      fontFamily: font.title,
       fontSize: 128,
       fontWeight: 700,
       letterSpacing: 0,
       lineHeight: 1.05,
-      fill: '#fdf6ec',
+      fill: ink.title,
       align: 'left',
       width: PANEL_WIDTH - 180,
     },
@@ -156,12 +187,12 @@ export function buildRecapDoc(
       y: height * 0.3 - 90,
       rotation: 0,
       opacity: 0.9,
-      fontFamily: 'Space Grotesk',
+      fontFamily: font.body,
       fontSize: 44,
       fontWeight: 500,
       letterSpacing: 8,
       lineHeight: 1,
-      fill: '#f0c987',
+      fill: ink.accent,
       align: 'left',
     },
     {
@@ -172,12 +203,12 @@ export function buildRecapDoc(
       y: height * 0.72,
       rotation: 0,
       opacity: 0.92,
-      fontFamily: 'Inter',
+      fontFamily: font.body,
       fontSize: 40,
       fontWeight: 500,
       letterSpacing: 2,
       lineHeight: 1.4,
-      fill: '#fdf6ec',
+      fill: ink.body,
       align: 'left',
     },
   ];
@@ -192,12 +223,12 @@ export function buildRecapDoc(
       y: height * 0.42,
       rotation: 0,
       opacity: 1,
-      fontFamily: 'Caveat',
+      fontFamily: font.outro,
       fontSize: 160,
       fontWeight: 600,
       letterSpacing: 0,
       lineHeight: 1,
-      fill: '#fdf6ec',
+      fill: ink.title,
       align: 'left',
     },
     {
@@ -208,12 +239,12 @@ export function buildRecapDoc(
       y: height * 0.62,
       rotation: 0,
       opacity: 0.7,
-      fontFamily: 'Inter',
+      fontFamily: font.body,
       fontSize: 34,
       fontWeight: 400,
       letterSpacing: 2,
       lineHeight: 1,
-      fill: '#f0c987',
+      fill: ink.accent,
       align: 'left',
     },
   ];
