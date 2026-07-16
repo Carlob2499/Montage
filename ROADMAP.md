@@ -1,5 +1,14 @@
 # Montage Studio — Roadmap
 
+> **Status (2026-07-16): R1–R6 shipped and live.** The reel engine, procedural
+> soundtrack + beat cuts, face/saliency framing, story-arc ordering, reel editing
+> (vibe chips / title / slide strip), and the first-run demo are all deployed at
+> https://carlob2499.github.io/Montage/. Deferred by design: on-device CLIP (R4),
+> Dexie persistence of user audio (R2), drag-reorder + per-slide locks (R5), and the
+> WebCodecs fast-encode path (R6, real-time capture proved sufficient). The
+> validation & preview playbook below remains the standing bar for future work.
+
+
 **North star:** an extremely functional, visually stunning, *automated* AI photo-montage
 maker. A user dumps trip photos in, and with zero editing gets a share-ready **reel/story**
 — and can polish it in the editor if they want. Everything stays local-first/offline

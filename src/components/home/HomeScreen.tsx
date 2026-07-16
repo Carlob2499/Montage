@@ -11,6 +11,7 @@ import { ASPECT_PRESETS } from '../../types';
 import Icon from '../shared/Icon';
 import { createMontageFromFiles } from '../../lib/curation/autoMontageFlow';
 import type { MontageProgress } from '../../lib/curation/autoMontageFlow';
+import { generateSampleFiles } from '../../lib/demo/sampleTrip';
 import { useMontageStore } from '../../state/montageStore';
 
 const STAGE_LABEL: Record<MontageProgress['stage'], string> = {
@@ -44,6 +45,17 @@ export default function HomeScreen() {
       console.error(err);
       toast(err instanceof Error ? err.message : 'Could not create montage', 'error');
     } finally {
+      setMontaging(null);
+    }
+  };
+  const runDemo = async () => {
+    setMontaging({ stage: 'importing', done: 0, total: 6 });
+    try {
+      const files = await generateSampleFiles();
+      await runAutoMontage(files);
+    } catch (err) {
+      console.error(err);
+      toast('Could not start the demo', 'error');
       setMontaging(null);
     }
   };
@@ -148,6 +160,14 @@ export default function HomeScreen() {
           if (files.length) void runAutoMontage(files);
         }}
       />
+      <div className="mb-3 -mt-1 text-center">
+        <button
+          className="text-xs text-ink-400 underline decoration-dotted underline-offset-2"
+          onClick={() => void runDemo()}
+        >
+          No photos handy? Try a demo trip →
+        </button>
+      </div>
 
       <div className="flex gap-2 pb-4">
         <button className="btn-soft flex-1" onClick={() => setShowNew(true)}>

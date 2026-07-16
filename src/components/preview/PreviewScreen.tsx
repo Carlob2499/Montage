@@ -468,6 +468,11 @@ export default function PreviewScreen() {
               </button>
             </div>
           )}
+          {showReel && (
+            <p className="mb-2 text-center text-[11px] text-white/40">
+              9:16 — ready for Reels, Stories &amp; TikTok
+            </p>
+          )}
           <div className="flex items-center gap-2">
             <button
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/15 py-3 text-sm font-semibold text-white active:scale-[0.97] disabled:opacity-50"

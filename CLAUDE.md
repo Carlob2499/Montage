@@ -153,6 +153,14 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   woven through the middle so the rhythm varies. A permutation (nothing added/lost),
   deterministic. Applied in `autoMontageFlow` + library smart-pick so the reel and carousel
   share the narrative. Heuristic only; on-device CLIP is a deliberately deferred flag.
+- **First-run demo** (`src/lib/demo/sampleTrip.ts`): a brand-new user with no photos can
+  tap "Try a demo trip" on Home — 6 vibey landscape scenes are synthesized on the fly (canvas
+  → JPEG Files, no bundled assets) and run through the real Auto Montage → reel flow. The
+  onboarding promise, tested by `smoke-demo`.
+- **Reel export is real-time capture** and that has proven fine for 15–60s reels, so the
+  WebCodecs fast-encode path stays a documented future optimization (not needed yet). The
+  reel decodes photos from proxies for preview and originals for export, releasing bitmaps in
+  a `finally` — keep that so a 60s reel doesn't retain a fleet of full-res bitmaps.
 - **One-tap Auto Montage** (`createMontageFromFiles` in `src/lib/curation/autoMontageFlow.ts`)
   is the flagship zero-edit path: a Home hero takes a photo dump → new album → import → score
   → `curateAlbum` → `buildAutoMontageDoc` → lands in **Preview** (not the editor) with
