@@ -9,6 +9,7 @@ import { importFiles } from '../../db/importPhotos';
 import type { AlbumRecord, PhotoRecord, ProjectDoc, VibeLabel } from '../../types';
 import { scoreMissing } from './score';
 import { curateAlbum } from './select';
+import { storyOrder } from './storyOrder';
 import { buildAutoMontageDoc } from './autoMontage';
 
 export type MontageStage = 'importing' | 'scoring' | 'stitching';
@@ -65,7 +66,8 @@ export async function createMontageFromFiles(
 
   onProgress?.({ stage: 'stitching', done: 0, total: 1 });
   const { picks, vibe } = curateAlbum(scored);
-  const chosen = picks.length ? picks : scored;
+  // reorder the best-of into a narrated arc (establishing → middle → finale)
+  const chosen = storyOrder(picks.length ? picks : scored);
   const doc = buildAutoMontageDoc(album, chosen, vibe, uid);
   await db.projects.put(doc);
   onProgress?.({ stage: 'stitching', done: 1, total: 1 });

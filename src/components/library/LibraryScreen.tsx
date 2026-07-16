@@ -12,6 +12,7 @@ import { useBlobUrl } from '../../hooks/useBlobUrl';
 import { useCurationScan } from '../../hooks/useCurationScan';
 import { scoreMissing } from '../../lib/curation/score';
 import { curateAlbum } from '../../lib/curation/select';
+import { storyOrder } from '../../lib/curation/storyOrder';
 import { buildAutoMontageDoc } from '../../lib/curation/autoMontage';
 import type { AlbumRecord, PhotoRecord, SortMode, VibeLabel } from '../../types';
 import { addPhotoLayersToProject, applyAutoLayout } from '../editor/canvasActions';
@@ -107,7 +108,7 @@ export default function LibraryScreen() {
         setMontageProgress({ done, total }),
       );
       const { picks, vibe } = curateAlbum(scored);
-      setMontagePrep({ album: alb, picks, vibe });
+      setMontagePrep({ album: alb, picks: storyOrder(picks), vibe });
     } catch (err) {
       console.error(err);
       toast('Could not analyze this album', 'error');

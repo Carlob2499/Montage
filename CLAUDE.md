@@ -147,6 +147,12 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   (omitting it is byte-identical to the old center-crop). The reel's Ken Burns anchors on
   `ReelSlide.focal`; the carousel bakes focal → `imgOffset` in `buildAutoMontageDoc` so no
   renderer change is needed. Advisory only — the user can still pan/zoom freely.
+- **Story-arc ordering** (`src/lib/curation/storyOrder.ts`, pure + tested): after
+  `curateAlbum`, the best-of set is reordered into a narrated arc — a warm "golden" finale
+  is claimed first, then an establishing (fewest-faces) opener, then people/detail shots
+  woven through the middle so the rhythm varies. A permutation (nothing added/lost),
+  deterministic. Applied in `autoMontageFlow` + library smart-pick so the reel and carousel
+  share the narrative. Heuristic only; on-device CLIP is a deliberately deferred flag.
 - **One-tap Auto Montage** (`createMontageFromFiles` in `src/lib/curation/autoMontageFlow.ts`)
   is the flagship zero-edit path: a Home hero takes a photo dump → new album → import → score
   → `curateAlbum` → `buildAutoMontageDoc` → lands in **Preview** (not the editor) with
@@ -158,4 +164,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 246 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 252 tests.
