@@ -69,6 +69,18 @@ describe('buildAutoMontageDoc', () => {
     }
   });
 
+  it('bakes each pick focal into its photo layer imgOffset (subject-aware)', () => {
+    const withFocal = picks.map((p, i) =>
+      i === 0
+        ? { ...p, scores: { ...(p.scores ?? ({} as never)), focal: { x: 0.9, y: 0.2 } } }
+        : p,
+    );
+    const doc = buildAutoMontageDoc(album, withFocal as typeof picks, 'muted', makeId);
+    const layer = doc.layers.find((l) => l.type === 'photo' && l.photoId === withFocal[0].id);
+    expect(layer && 'imgOffsetX' in layer && layer.imgOffsetX).toBeGreaterThan(0.3); // pulled right
+    expect(layer && 'imgOffsetY' in layer && layer.imgOffsetY).toBeLessThan(-0.3); // pulled up
+  });
+
   it('an explicit seed varies the arrangement (Shuffle)', () => {
     let a = 0;
     let b = 0;

@@ -33,6 +33,8 @@ export interface ReelSlide {
   motion: SlideMotion;
   /** transition INTO this slide (from the previous segment) */
   transition: ReelTransition;
+  /** normalized subject position (0..1) — Ken Burns anchors on it (R3) */
+  focal?: { x: number; y: number };
 }
 
 export interface ReelDoc {
@@ -207,11 +209,16 @@ export function normalizeReelDoc(input: unknown): ReelDoc {
       const transition = REEL_TRANSITIONS.includes(o.transition as ReelTransition)
         ? (o.transition as ReelTransition)
         : 'crossfade';
+      const focal =
+        o.focal && typeof o.focal.x === 'number' && typeof o.focal.y === 'number'
+          ? { x: clamp(o.focal.x, 0, 1), y: clamp(o.focal.y, 0, 1) }
+          : undefined;
       return {
         photoId: o.photoId,
         durationMs: clamp(num(o.durationMs, 2100), 300, 12_000),
         motion: normMotion(o.motion),
         transition,
+        focal,
       };
     })
     .filter((s): s is ReelSlide => s !== null);

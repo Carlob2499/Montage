@@ -118,7 +118,22 @@ export function buildAutoMontageDoc(
     coverInk: theme.ink,
     coverFont: theme.font,
   });
-  return { ...doc, templateId: `vibe:${vibe}` };
+  // subject-aware framing (R3): nudge each photo's cover-fit toward its focal
+  // point so faces/subjects aren't cropped out. Maps focal (0..1) → imgOffset
+  // (-1..1 of free travel), damped so it never slams to the edge.
+  const focalById = new Map(picks.filter((p) => p.scores?.focal).map((p) => [p.id, p.scores!.focal!]));
+  const layers = focalById.size
+    ? doc.layers.map((l) => {
+        if (l.type !== 'photo' || !focalById.has(l.photoId)) return l;
+        const f = focalById.get(l.photoId)!;
+        return {
+          ...l,
+          imgOffsetX: Math.max(-1, Math.min(1, (f.x - 0.5) * 2 * 0.8)),
+          imgOffsetY: Math.max(-1, Math.min(1, (f.y - 0.5) * 2 * 0.8)),
+        };
+      })
+    : doc.layers;
+  return { ...doc, layers, templateId: `vibe:${vibe}` };
 }
 
 /** the vibes in shuffle order, so re-generating cycles palettes/frames */

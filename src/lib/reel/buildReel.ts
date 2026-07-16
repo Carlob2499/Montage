@@ -113,6 +113,7 @@ export function buildReelDoc(
     durationMs: durations[i] ?? perSlideMs,
     motion: seededMotion(seed, i),
     transition: REEL_TRANSITIONS[(seed + i) % REEL_TRANSITIONS.length],
+    focal: p.scores?.focal,
   }));
 
   // when the pick set is empty (shouldn't happen — caller guards), still return

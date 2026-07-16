@@ -9,11 +9,13 @@ import type { Pixels } from './pixels';
 import { qualityScore } from './quality';
 import { pHash } from './phash';
 import { analyzePalette } from './palette';
+import { computeFocal } from './focal';
+import type { FaceBox } from './focal';
 import { makeCanvas } from '../imageUtils';
 
-/** Pure: fold every metric into a PhotoScores. */
-export function analyzePhoto(px: Pixels, faceCount = 0): PhotoScores {
-  const q = qualityScore(px, faceCount);
+/** Pure: fold every metric into a PhotoScores. `faces` are normalized boxes. */
+export function analyzePhoto(px: Pixels, faces: FaceBox[] = []): PhotoScores {
+  const q = qualityScore(px, faces.length);
   const pal = analyzePalette(px);
   return {
     quality: q.quality,
@@ -26,6 +28,7 @@ export function analyzePhoto(px: Pixels, faceCount = 0): PhotoScores {
     hue: pal.hue,
     sat: pal.sat,
     light: pal.light,
+    focal: computeFocal(px, faces),
   };
 }
 

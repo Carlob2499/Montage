@@ -87,7 +87,8 @@ function paintBackground(ctx: Ctx2D, bg: Background, w: number, h: number): void
   }
 }
 
-/** cover-fit a bitmap into (w,h) with a Ken Burns zoom/pan, full-bleed. */
+/** cover-fit a bitmap into (w,h) with a Ken Burns zoom/pan, full-bleed. When a
+ *  focal point is given the crop anchors on the subject (R3). */
 function drawPhotoCover(
   ctx: Ctx2D,
   img: ImageBitmap,
@@ -96,8 +97,9 @@ function drawPhotoCover(
   zoom: number,
   offX: number,
   offY: number,
+  focal?: { x: number; y: number },
 ): void {
-  const { sx, sy, sw, sh } = coverCrop(img.width, img.height, w, h, zoom, offX, offY);
+  const { sx, sy, sw, sh } = coverCrop(img.width, img.height, w, h, zoom, offX, offY, focal);
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
 }
 
@@ -239,7 +241,7 @@ function drawSlide(ctx: Ctx2D, doc: ReelDoc, slideIndex: number, localT: number,
     return;
   }
   const m = slideMotionAt(slide.motion, localT);
-  drawPhotoCover(ctx, img, w, h, m.zoom, m.offX, m.offY);
+  drawPhotoCover(ctx, img, w, h, m.zoom, m.offX, m.offY, slide.focal);
 }
 
 /** draw a single segment fully (no transition), at its own local progress. */

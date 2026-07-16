@@ -91,6 +91,9 @@ export interface PhotoScores {
   hue: number;
   sat: number;
   light: number;
+  /** normalized subject position (0..1) for subject-aware crops; undefined on
+   *  old cached scores (falls back to center — no migration needed) */
+  focal?: { x: number; y: number };
 }
 
 export interface AlbumRecord {

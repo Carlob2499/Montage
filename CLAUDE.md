@@ -140,6 +140,13 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   `buildRecapDoc` (extended with a bg/frame/seed override) and the SAME
   recap→editor path. Everything here stays 100% offline. Advisory, never destructive —
   the user always gets an editable draft and can override the detected vibe.
+- **Subject-aware framing** (`src/lib/curation/focal.ts`, pure + tested): a normalized
+  focal point per photo (largest detected face, else a saliency/gradient-centroid) is
+  cached on `PhotoScores.focal` (undefined on old scores → falls back to center, no
+  migration). `coverCrop` takes an optional `focal` and anchors the crop on the subject
+  (omitting it is byte-identical to the old center-crop). The reel's Ken Burns anchors on
+  `ReelSlide.focal`; the carousel bakes focal → `imgOffset` in `buildAutoMontageDoc` so no
+  renderer change is needed. Advisory only — the user can still pan/zoom freely.
 - **One-tap Auto Montage** (`createMontageFromFiles` in `src/lib/curation/autoMontageFlow.ts`)
   is the flagship zero-edit path: a Home hero takes a photo dump → new album → import → score
   → `curateAlbum` → `buildAutoMontageDoc` → lands in **Preview** (not the editor) with
@@ -151,4 +158,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 237 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 246 tests.

@@ -137,6 +137,11 @@ export const makeScaledJpeg = makeScaledImage;
  * Cover-fit math: how to draw an image of (iw, ih) inside a frame (fw, fh)
  * with zoom (>=1) and pan offsets (-1..1 of the free travel).
  * Returns the source crop rect in image pixels.
+ *
+ * When `focal` (normalized subject position, 0..1) is given, the crop centers
+ * on the subject instead of the image center, then applies the pan offset as a
+ * nudge on top — so automated framing keeps the subject in view. Omitting
+ * `focal` is byte-identical to the original center-crop behavior.
  */
 export function coverCrop(
   iw: number,
@@ -146,14 +151,19 @@ export function coverCrop(
   zoom: number,
   offsetX: number,
   offsetY: number,
+  focal?: { x: number; y: number },
 ): { sx: number; sy: number; sw: number; sh: number } {
   const scale = Math.max(fw / iw, fh / ih) * Math.max(1, zoom);
   const sw = fw / scale;
   const sh = fh / scale;
   const freeX = (iw - sw) / 2;
   const freeY = (ih - sh) / 2;
-  const sx = freeX + offsetX * freeX;
-  const sy = freeY + offsetY * freeY;
+  if (!focal) {
+    return { sx: freeX + offsetX * freeX, sy: freeY + offsetY * freeY, sw, sh };
+  }
+  const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, v));
+  const sx = clamp(focal.x * iw - sw / 2 + offsetX * freeX, iw - sw);
+  const sy = clamp(focal.y * ih - sh / 2 + offsetY * freeY, ih - sh);
   return { sx, sy, sw, sh };
 }
 

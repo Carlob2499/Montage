@@ -28,7 +28,7 @@ export async function scoreOne(record: PhotoRecord): Promise<PhotoScores> {
     const row = await db.thumbs.get(record.id);
     if (!row) return NEUTRAL_SCORES;
     const px = await pixelsFromBlob(row.blob);
-    return analyzePhoto(px, record.faces?.length ?? 0);
+    return analyzePhoto(px, record.faces ?? []);
   } catch {
     return NEUTRAL_SCORES;
   }
