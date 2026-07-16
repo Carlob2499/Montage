@@ -12,6 +12,7 @@ import CaptionsSheet from './sheets/CaptionsSheet';
 import StickersSheet from './sheets/StickersSheet';
 import ExportSheet from './sheets/ExportSheet';
 import HistorySheet from './sheets/HistorySheet';
+import EffectsSheet from './sheets/EffectsSheet';
 import PhotoEditSheet from './PhotoEditSheet';
 import { addTextLayer } from './canvasActions';
 import Icon from '../shared/Icon';
@@ -164,6 +165,7 @@ export default function EditorScreen() {
       {sheet === 'stickers' && <StickersSheet onClose={closeSheet} />}
       {sheet === 'export' && <ExportSheet onClose={closeSheet} />}
       {sheet === 'history' && <HistorySheet onClose={closeSheet} />}
+      {sheet === 'effects' && <EffectsSheet onClose={closeSheet} />}
       {sheet === 'photoEdit' && selectedPhotoLayer?.type === 'photo' && (
         <PhotoEditSheet
           key={selectedPhotoLayer.photoId}
@@ -328,6 +330,9 @@ function SelectionBar() {
           Edit text
         </button>
       )}
+      <button className="btn-ghost px-2 py-1 text-xs" onClick={() => openSheet('effects')}>
+        Effects
+      </button>
       <button
         className="btn-ghost px-2 py-1 text-xs"
         onClick={() => useProjectStore.getState().duplicateLayers(selectedIds)}

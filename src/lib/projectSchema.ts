@@ -5,7 +5,40 @@
 // ---------------------------------------------------------------------------
 
 import { PANEL_HEIGHTS, PANEL_WIDTH } from '../types';
-import type { Background, GradientStop, Layer, PanelAspect, ProjectDoc } from '../types';
+import type {
+  Background,
+  GradientStop,
+  Layer,
+  LayerShadow,
+  LayerStroke,
+  MaskShape,
+  PanelAspect,
+  ProjectDoc,
+} from '../types';
+
+function normalizeShadow(raw: unknown): LayerShadow | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.color !== 'string') return undefined;
+  return {
+    color: s.color,
+    blur: Math.max(0, num(s.blur, 12)),
+    offsetX: num(s.offsetX, 0),
+    offsetY: num(s.offsetY, 6),
+  };
+}
+
+function normalizeStroke(raw: unknown): LayerStroke | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.color !== 'string') return undefined;
+  const width = Math.max(0, num(s.width, 0));
+  return width > 0 ? { color: s.color, width } : undefined;
+}
+
+const MASK_SHAPES: MaskShape[] = ['circle', 'arch', 'heart', 'blob'];
+const asMaskShape = (v: unknown): MaskShape | undefined =>
+  MASK_SHAPES.includes(v as MaskShape) ? (v as MaskShape) : undefined;
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const num = (v: unknown, fallback: number): number => (isNum(v) ? v : fallback);
@@ -68,6 +101,7 @@ function normalizeLayer(raw: unknown): Layer | null {
     opacity: Math.min(1, Math.max(0, num(l.opacity, 1))),
     locked: l.locked === true,
     name: typeof l.name === 'string' ? l.name : undefined,
+    shadow: normalizeShadow(l.shadow),
   };
   switch (l.type) {
     case 'photo':
@@ -86,6 +120,8 @@ function normalizeLayer(raw: unknown): Layer | null {
           l.frameStyle === 'polaroid' || l.frameStyle === 'tape' || l.frameStyle === 'torn'
             ? l.frameStyle
             : undefined,
+        maskShape: asMaskShape(l.maskShape),
+        stroke: normalizeStroke(l.stroke),
       };
     case 'card':
       return {
@@ -96,6 +132,7 @@ function normalizeLayer(raw: unknown): Layer | null {
         cornerRadius: Math.max(0, num(l.cornerRadius, 24)),
         fill: str(l.fill, 'rgba(255,255,255,0.55)'),
         glass: l.glass === true,
+        stroke: normalizeStroke(l.stroke),
       };
     case 'text':
       return {

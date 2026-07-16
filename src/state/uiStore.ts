@@ -15,7 +15,8 @@ export type EditorSheet =
   | 'captions'
   | 'stickers'
   | 'gridPlan'
-  | 'history';
+  | 'history'
+  | 'effects';
 
 export interface Toast {
   id: number;

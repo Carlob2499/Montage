@@ -59,6 +59,45 @@ describe('normalizeProjectDoc', () => {
     expect(p.width).toBeGreaterThan(0);
   });
 
+  it('normalizes layer shadow, stroke, and mask shape', () => {
+    const doc = normalizeProjectDoc({
+      id: 'x',
+      panelCount: 1,
+      layers: [
+        {
+          id: 'p1',
+          type: 'photo',
+          photoId: 'ph',
+          width: 100,
+          height: 100,
+          maskShape: 'heart',
+          stroke: { color: '#fff', width: 6 },
+          shadow: { color: 'rgba(0,0,0,0.4)', blur: 20, offsetX: 2, offsetY: 8 },
+        },
+        {
+          id: 'p2',
+          type: 'photo',
+          photoId: 'ph',
+          width: 100,
+          height: 100,
+          maskShape: 'bogus',
+          stroke: { color: '#fff', width: 0 }, // zero → dropped
+        },
+      ],
+    });
+    const p1 = doc.layers[0] as {
+      maskShape?: string;
+      stroke?: { width: number };
+      shadow?: { blur: number };
+    };
+    expect(p1.maskShape).toBe('heart');
+    expect(p1.stroke?.width).toBe(6);
+    expect(p1.shadow?.blur).toBe(20);
+    const p2 = doc.layers[1] as { maskShape?: string; stroke?: unknown };
+    expect(p2.maskShape).toBeUndefined(); // invalid shape rejected
+    expect(p2.stroke).toBeUndefined(); // zero-width stroke rejected
+  });
+
   it('forces 1:1 aspect for grid mode and clamps panel count', () => {
     const doc = normalizeProjectDoc({
       id: 'x',

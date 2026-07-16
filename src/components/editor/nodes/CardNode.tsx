@@ -63,6 +63,13 @@ function CardNode({
         height={layer.height}
         cornerRadius={r}
         fill={layer.fill}
+        shadowEnabled={!!layer.shadow}
+        shadowColor={layer.shadow?.color}
+        shadowBlur={layer.shadow?.blur}
+        shadowOffsetX={layer.shadow?.offsetX}
+        shadowOffsetY={layer.shadow?.offsetY}
+        stroke={layer.stroke?.color}
+        strokeWidth={layer.stroke?.width}
         perfectDrawEnabled={false}
       />
       {layer.glass && (

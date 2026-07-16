@@ -158,6 +158,20 @@ export interface EditStack {
 
 // --- Canvas layers -----------------------------------------------------------
 
+/** drop shadow cast by a layer (color carries its own alpha) */
+export interface LayerShadow {
+  color: string;
+  blur: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/** border/stroke around a photo or card */
+export interface LayerStroke {
+  color: string;
+  width: number;
+}
+
 interface LayerBase {
   id: string;
   x: number;
@@ -166,10 +180,15 @@ interface LayerBase {
   opacity: number;
   locked?: boolean;
   name?: string;
+  /** drop shadow (undefined = none) — applies to every layer type */
+  shadow?: LayerShadow;
 }
 
 /** decorative photo frame treatments (scrapbook kit) */
 export type FrameStyle = 'polaroid' | 'tape' | 'torn';
+
+/** shape a photo is masked to (undefined = plain rounded rect) */
+export type MaskShape = 'circle' | 'arch' | 'heart' | 'blob';
 
 export interface PhotoLayer extends LayerBase {
   type: 'photo';
@@ -187,6 +206,10 @@ export interface PhotoLayer extends LayerBase {
   isSubject?: boolean;
   /** scrapbook frame treatment (undefined = plain) */
   frameStyle?: FrameStyle;
+  /** shape mask (undefined = rounded rect via cornerRadius) */
+  maskShape?: MaskShape;
+  /** border around the photo (undefined = none) */
+  stroke?: LayerStroke;
 }
 
 export interface TextLayer extends LayerBase {
@@ -219,6 +242,8 @@ export interface CardLayer extends LayerBase {
   fill: string;
   /** glassmorphism styling: highlight sheen + hairline border */
   glass: boolean;
+  /** border around the card (undefined = none) */
+  stroke?: LayerStroke;
 }
 
 export type Layer = PhotoLayer | TextLayer | StickerLayer | CardLayer;

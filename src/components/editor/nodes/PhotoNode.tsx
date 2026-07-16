@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
-import { Group, Image as KonvaImage, Line, Rect, Text as KonvaText } from 'react-konva';
+import { Group, Image as KonvaImage, Line, Rect, Shape, Text as KonvaText } from 'react-konva';
 import Konva from 'konva';
 import { frameContentRect, tapeStrips, tornEdgePath, tracePath } from '../../../lib/frameStyles';
+import { tracePhotoOutline } from '../../../lib/maskShapes';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../../db/db';
@@ -208,26 +209,24 @@ function PhotoNode({
 
   const r = Math.min(layer.cornerRadius, layer.width / 2, layer.height / 2);
 
+  // trace the photo's outline (mask shape or rounded rect) — shared by the
+  // clip, the drop-shadow silhouette, and the border, exactly like the export
+  const outline = (ctx: Konva.Context) =>
+    tracePhotoOutline(ctx as unknown as Parameters<typeof tracePhotoOutline>[0], {
+      maskShape: layer.maskShape,
+      cornerRadius: r,
+      width: layer.width,
+      height: layer.height,
+    });
+
   const clipFunc =
     layer.frameStyle === 'torn' && tornPts
       ? (ctx: Konva.Context) => tracePath(ctx, tornPts)
       : layer.frameStyle
         ? undefined
-        : (ctx: Konva.Context) => {
-            const w = layer.width;
-            const h = layer.height;
-            ctx.beginPath();
-            if (r > 0) {
-              ctx.moveTo(r, 0);
-              ctx.arcTo(w, 0, w, h, r);
-              ctx.arcTo(w, h, 0, h, r);
-              ctx.arcTo(0, h, 0, 0, r);
-              ctx.arcTo(0, 0, w, 0, r);
-            } else {
-              ctx.rect(0, 0, w, h);
-            }
-            ctx.closePath();
-          };
+        : outline;
+
+  const plainStyled = !layer.frameStyle;
 
   return (
     <Group
@@ -266,6 +265,22 @@ function PhotoNode({
           shadowColor="rgba(0,0,0,0.25)"
           shadowBlur={10}
           shadowOffsetY={4}
+          perfectDrawEnabled={false}
+        />
+      )}
+      {/* drop-shadow silhouette (behind the clipped photo) */}
+      {layer.shadow && plainStyled && (
+        <Shape
+          sceneFunc={(ctx, shape) => {
+            outline(ctx);
+            ctx.fillStrokeShape(shape);
+          }}
+          fill="#000000"
+          shadowColor={layer.shadow.color}
+          shadowBlur={layer.shadow.blur}
+          shadowOffsetX={layer.shadow.offsetX}
+          shadowOffsetY={layer.shadow.offsetY}
+          listening={false}
           perfectDrawEnabled={false}
         />
       )}
@@ -311,6 +326,19 @@ function PhotoNode({
               fill="#9ca3af"
             />
           </>
+        )}
+        {/* border stroke at 2× width — clip keeps the inner half (inset border) */}
+        {layer.stroke && layer.stroke.width > 0 && plainStyled && (
+          <Shape
+            sceneFunc={(ctx, shape) => {
+              outline(ctx);
+              ctx.fillStrokeShape(shape);
+            }}
+            stroke={layer.stroke.color}
+            strokeWidth={layer.stroke.width * 2}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
         )}
       </Group>
       {layer.frameStyle === 'tape' &&

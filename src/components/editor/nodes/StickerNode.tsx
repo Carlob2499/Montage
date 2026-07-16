@@ -73,6 +73,11 @@ function StickerNode({
       height={layer.height}
       rotation={layer.rotation}
       opacity={layer.opacity}
+      shadowEnabled={!!layer.shadow}
+      shadowColor={layer.shadow?.color}
+      shadowBlur={layer.shadow?.blur}
+      shadowOffsetX={layer.shadow?.offsetX}
+      shadowOffsetY={layer.shadow?.offsetY}
       draggable={!layer.locked}
       onDragMove={(e) => onDragMove(e, layer)}
       onDragEnd={(e) => onDragEnd(e, layer)}

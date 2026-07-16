@@ -11,7 +11,16 @@ import type { Rect } from './slicer';
 import { applyAdjustments, isNeutral } from './editStack';
 import { coverCrop } from './imageUtils';
 import { frameContentRect, tapeStrips, tornEdgePath, tracePath } from './frameStyles';
-import type { EditStack } from '../types';
+import { tracePhotoOutline } from './maskShapes';
+import type { EditStack, LayerShadow } from '../types';
+
+/** apply a layer drop shadow to the ctx (call inside a save/restore). */
+function applyShadow(ctx: Ctx, s: LayerShadow): void {
+  ctx.shadowColor = s.color;
+  ctx.shadowBlur = s.blur;
+  ctx.shadowOffsetX = s.offsetX;
+  ctx.shadowOffsetY = s.offsetY;
+}
 
 export interface PhotoResource {
   bitmap: ImageBitmap;
@@ -282,6 +291,18 @@ function paintPhotoLayer(
 
   const content = frameContentRect(layer.frameStyle, layer.width, layer.height);
 
+  // drop shadow: cast by an opaque silhouette of the photo's outline, drawn
+  // BEFORE the photo (which then covers it, leaving only the shadow). Frame
+  // styles already cast their own shadow, so skip when one is set.
+  if (layer.shadow && !layer.frameStyle) {
+    ctx.save();
+    applyShadow(ctx, layer.shadow);
+    tracePhotoOutline(ctx, layer);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+    ctx.restore();
+  }
+
   // frame backing (drawn before the photo)
   if (layer.frameStyle === 'polaroid') {
     ctx.save();
@@ -304,8 +325,8 @@ function paintPhotoLayer(
     ctx.restore();
     tracePath(ctx, pts);
     ctx.clip();
-  } else if (layer.cornerRadius > 0 && !layer.frameStyle) {
-    roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
+  } else if (!layer.frameStyle && (layer.maskShape || layer.cornerRadius > 0)) {
+    tracePhotoOutline(ctx, layer);
     ctx.clip();
   }
 
@@ -407,6 +428,15 @@ function paintPhotoLayer(
     ctx.drawImage(cached, content.x, content.y);
   }
 
+  // border stroke: drawn while the clip is still active, at 2× width so the
+  // clipped-away outer half leaves a clean inset border of the chosen width
+  if (layer.stroke && layer.stroke.width > 0 && !layer.frameStyle) {
+    tracePhotoOutline(ctx, layer);
+    ctx.strokeStyle = layer.stroke.color;
+    ctx.lineWidth = layer.stroke.width * 2;
+    ctx.stroke();
+  }
+
   // washi tape strips over the photo
   if (layer.frameStyle === 'tape') {
     for (const strip of tapeStrips(layer.width, layer.height, layer.id)) {
@@ -426,6 +456,14 @@ function paintCardLayer(ctx: Ctx, layer: CardLayer): void {
   ctx.translate(layer.x, layer.y);
   ctx.rotate((layer.rotation * Math.PI) / 180);
   ctx.globalAlpha = layer.opacity;
+  if (layer.shadow) {
+    ctx.save();
+    applyShadow(ctx, layer.shadow);
+    roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
+    ctx.fillStyle = layer.fill;
+    ctx.fill();
+    ctx.restore();
+  }
   roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
   ctx.fillStyle = layer.fill;
   ctx.fill();
@@ -444,6 +482,12 @@ function paintCardLayer(ctx: Ctx, layer: CardLayer): void {
     roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  if (layer.stroke && layer.stroke.width > 0) {
+    roundedRectPath(ctx, layer.width, layer.height, layer.cornerRadius);
+    ctx.strokeStyle = layer.stroke.color;
+    ctx.lineWidth = layer.stroke.width;
     ctx.stroke();
   }
   ctx.restore();
@@ -501,6 +545,7 @@ function paintTextLayer(ctx: Ctx, layer: TextLayer): void {
   ctx.translate(layer.x, layer.y);
   ctx.rotate((layer.rotation * Math.PI) / 180);
   ctx.globalAlpha = layer.opacity;
+  if (layer.shadow) applyShadow(ctx, layer.shadow);
   ctx.fillStyle = layer.fill;
   ctx.font = textFont(layer);
   ctx.textBaseline = 'top';
@@ -542,6 +587,7 @@ function paintStickerLayer(
   ctx.translate(layer.x, layer.y);
   ctx.rotate((layer.rotation * Math.PI) / 180);
   ctx.globalAlpha = layer.opacity;
+  if (layer.shadow) applyShadow(ctx, layer.shadow);
   ctx.drawImage(bmp, 0, 0, layer.width, layer.height);
   ctx.restore();
 }

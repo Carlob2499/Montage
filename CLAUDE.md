@@ -25,6 +25,11 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
      sliced, never re-blurred per panel;
    - frame-style geometry (torn edges, tape strips) is deterministic per layer id
      (`src/lib/frameStyles.ts`) so Konva and export draw the same shapes.
+   - **layer effects** (drop shadow on any layer; border + shape mask on photos/cards) share
+     ONE path tracer `tracePhotoOutline`/`traceMask` (`src/lib/maskShapes.ts`) across Konva and
+     export. Photo shadow = an opaque silhouette drawn behind the clipped photo; the border
+     strokes the clip outline at 2× width so the clip keeps a clean inset edge. New effect
+     fields (shadow/stroke/maskShape) must go through `normalizeProjectDoc`.
 2. **Preview/export parity.** The editor (Konva) and the export renderer are separate code
    paths that must visually agree: text metrics (`measureTextLayer` — real glyph
    measurement, per-glyph letterSpacing drawing), cover-fit math (`coverCrop` used by
@@ -119,4 +124,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 197 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 205 tests.
