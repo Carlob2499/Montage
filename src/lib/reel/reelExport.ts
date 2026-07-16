@@ -9,6 +9,7 @@ import { db } from '../../db/db';
 import { decodeImage } from '../imageUtils';
 import { slug } from '../exporter';
 import { pickMimeType, videoExportSupported } from '../videoExport';
+import { renderVibeBed } from '../audio/synth';
 import { drawReelFrame } from './reelFrame';
 import type { ReelResources } from './reelFrame';
 import type { ReelDoc } from './reelDoc';
@@ -47,6 +48,48 @@ export interface ReelExportOptions {
   signal?: AbortSignal;
   /** reuse already-decoded bitmaps (e.g. the player's) instead of re-loading */
   resources?: ReelResources;
+  /** export without a soundtrack (default: the procedural vibe bed is muxed in) */
+  muted?: boolean;
+  /** user-supplied soundtrack, overriding the procedural bed */
+  audioBuffer?: AudioBuffer | null;
+}
+
+type AudioCtor = typeof AudioContext;
+
+/** add a soundtrack track to the capture stream; returns a cleanup fn. */
+async function attachAudio(
+  doc: ReelDoc,
+  stream: MediaStream,
+  opts: ReelExportOptions,
+): Promise<() => void> {
+  if (opts.muted) return () => {};
+  const AC: AudioCtor | undefined =
+    (typeof AudioContext !== 'undefined' && AudioContext) ||
+    (typeof window !== 'undefined' &&
+      (window as unknown as { webkitAudioContext?: AudioCtor }).webkitAudioContext) ||
+    undefined;
+  if (!AC) return () => {};
+  try {
+    const buffer = opts.audioBuffer ?? (await renderVibeBed(doc.vibe, doc.durationMs));
+    if (!buffer) return () => {};
+    const audioCtx = new AC();
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    const dest = audioCtx.createMediaStreamDestination();
+    src.connect(dest);
+    src.start();
+    for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
+    return () => {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+      void audioCtx.close();
+    };
+  } catch {
+    return () => {};
+  }
 }
 
 /**
@@ -78,6 +121,7 @@ export async function exportReelVideo(
   ctx.imageSmoothingQuality = 'high';
 
   const stream = canvas.captureStream(fps);
+  const stopAudio = await attachAudio(doc, stream, opts);
   const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 10_000_000 });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => {
@@ -117,6 +161,7 @@ export async function exportReelVideo(
     const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
     return { name: `${slug(doc.name)}-reel.${ext}`, blob };
   } finally {
+    stopAudio();
     if (ownResources) releaseReelResources(res);
   }
 }

@@ -34,6 +34,7 @@ export type IconName =
   | 'sliders'
   | 'grid'
   | 'eye'
+  | 'music'
   | 'more';
 
 /** each entry is the inner SVG markup for a 24×24 viewBox, stroke=currentColor */
@@ -115,6 +116,13 @@ const PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   wand: <path d="M15 4V2M15 10V8M18.5 6.5L20 5M18.5 6.5L20 8M11.5 6.5L10 5M4 20l9-9M13 9l2 2" />,
+  music: (
+    <>
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </>
+  ),
   sliders: (
     <>
       <path d="M4 8h9M17 8h3M4 16h3M11 16h9" />

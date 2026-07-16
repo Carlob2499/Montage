@@ -7,9 +7,17 @@ import { renderGridTile, renderPanel } from '../../lib/renderer';
 import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
 import { buildReelDoc, REEL_DURATIONS, DEFAULT_REEL_DURATION } from '../../lib/reel/buildReel';
 import { exportReelVideo, reelExportSupported } from '../../lib/reel/reelExport';
+import { decodeAudioFile } from '../../lib/audio/synth';
+import { detectBeats } from '../../lib/audio/beats';
 import ReelPlayer from './ReelPlayer';
 import { db, uid } from '../../db/db';
 import Icon from '../shared/Icon';
+
+interface UserTrack {
+  name: string;
+  buffer: AudioBuffer;
+  beatsMs: number[];
+}
 
 type Format = 'reel' | 'carousel';
 
@@ -35,7 +43,10 @@ export default function PreviewScreen() {
   const [playing, setPlaying] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [reelProgress, setReelProgress] = useState<number | null>(null);
+  const [muted, setMuted] = useState(false);
+  const [track, setTrack] = useState<UserTrack | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   // the reel is derived from the SAME recipe as the carousel; it re-derives on
   // shuffle (recipe.shuffles) and duration change. Memoized so the player isn't
@@ -46,9 +57,31 @@ export default function PreviewScreen() {
     return buildReelDoc(recipe.album, recipe.picks, recipe.vibe, uid, {
       seed,
       durationSec: reelSec,
+      beatCutsMs: track?.beatsMs,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipe?.docId, recipe?.vibe, recipe?.shuffles, reelSec]);
+  }, [recipe?.docId, recipe?.vibe, recipe?.shuffles, reelSec, track]);
+
+  const onMusicPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const decoded = await decodeAudioFile(file);
+      if (!decoded) {
+        toast('Audio not supported on this device', 'error');
+        return;
+      }
+      // analyze up to the first 40s for tempo (bounds the work on long songs)
+      const slice = decoded.mono.slice(0, decoded.sampleRate * 40);
+      const { beatsMs } = detectBeats(slice, decoded.sampleRate, reelSec * 1000 + 4000);
+      setTrack({ name: file.name.replace(/\.[^.]+$/, ''), buffer: decoded.buffer, beatsMs });
+      setMuted(false);
+      toast('Music added ✓', 'success');
+    } catch {
+      toast('Could not read that audio', 'error');
+    }
+  };
 
   // regenerate the montage from the same best-shot picks with a fresh
   // arrangement + theme — varies both the carousel and the reel
@@ -70,6 +103,8 @@ export default function PreviewScreen() {
     try {
       const { name, blob } = await exportReelVideo(reelDoc, {
         onProgress: (f) => setReelProgress(f),
+        muted,
+        audioBuffer: track?.buffer ?? null,
       });
       downloadBlob(blob, name);
       toast('Reel saved ✓', 'success');
@@ -199,7 +234,7 @@ export default function PreviewScreen() {
       </header>
 
       {showReel && reelDoc ? (
-        <ReelPlayer doc={reelDoc} />
+        <ReelPlayer doc={reelDoc} muted={muted} audioBuffer={track?.buffer ?? null} />
       ) : doc.mode === 'carousel' ? (
         <>
           <div
@@ -254,9 +289,9 @@ export default function PreviewScreen() {
 
       {isMontage && (
         <div className="border-t border-white/10 px-4 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-          {/* duration chips (reel only) */}
+          {/* duration + soundtrack controls (reel only) */}
           {showReel && (
-            <div className="mb-3 flex items-center justify-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
               {REEL_DURATIONS.map((s) => (
                 <button
                   key={s}
@@ -269,6 +304,39 @@ export default function PreviewScreen() {
                   {s}s
                 </button>
               ))}
+              <span className="mx-0.5 h-4 w-px bg-white/15" />
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={(e) => void onMusicPick(e)}
+              />
+              <button
+                className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/80 disabled:opacity-50"
+                onClick={() => audioInputRef.current?.click()}
+                disabled={exporting}
+              >
+                <Icon name="music" size={14} />
+                {track ? (track.name.length > 12 ? track.name.slice(0, 12) + '…' : track.name) : 'Add music'}
+              </button>
+              {track && (
+                <button
+                  className="rounded-full bg-white/10 px-2 py-1 text-xs text-white/60"
+                  onClick={() => setTrack(null)}
+                  disabled={exporting}
+                  aria-label="Remove music"
+                >
+                  ✕
+                </button>
+              )}
+              <button
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-xs text-white/80"
+                onClick={() => setMuted((m) => !m)}
+                aria-label={muted ? 'Unmute' : 'Mute'}
+              >
+                {muted ? '🔇' : '🔊'}
+              </button>
             </div>
           )}
           <div className="flex items-center gap-2">

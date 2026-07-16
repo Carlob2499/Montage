@@ -8,6 +8,7 @@
 import type { AlbumRecord, PhotoRecord, VibeLabel } from '../../types';
 import { computeRecapStats } from '../recap';
 import { VIBE_THEMES } from '../curation/autoMontage';
+import { beatAlignedDurations, vibeBeatGrid, vibeTempo } from '../audio/beats';
 import { REEL_TRANSITIONS, seededMotion } from './reelDoc';
 import type { ReelDoc, ReelSlide } from './reelDoc';
 
@@ -43,6 +44,16 @@ export function planReel(
   const perSlideMs = clampInt(budget / slideCount, MIN_SLIDE_MS, MAX_SLIDE_MS);
   const totalMs = COVER_MS + slideCount * perSlideMs + OUTRO_MS;
   return { slideCount, perSlideMs, totalMs };
+}
+
+/** median-interval BPM estimate from a beat time list (for user tracks) */
+function bpmFromBeats(beatsMs: number[]): number {
+  const gaps: number[] = [];
+  for (let i = 1; i < beatsMs.length; i++) gaps.push(beatsMs[i] - beatsMs[i - 1]);
+  if (!gaps.length) return 100;
+  gaps.sort((a, b) => a - b);
+  const median = gaps[Math.floor(gaps.length / 2)] || 500;
+  return Math.round(60000 / median);
 }
 
 /** stable seed from an id string (deterministic reel per album) */
@@ -85,9 +96,21 @@ export function buildReelDoc(
   const { slideCount, perSlideMs } = planReel(picks.length, durationSec);
   const chosen = picks.slice(0, slideCount);
 
+  // cut slides on the beat — either the user's track (opts.beatCutsMs) or the
+  // vibe's default tempo grid — so the pacing feels produced, not arbitrary.
+  const roughTotal = COVER_MS + slideCount * perSlideMs + OUTRO_MS;
+  const beats = opts.beatCutsMs && opts.beatCutsMs.length > 1
+    ? opts.beatCutsMs
+    : vibeBeatGrid(vibe, roughTotal).beatsMs;
+  const bpm = opts.beatCutsMs && opts.beatCutsMs.length > 1 ? bpmFromBeats(opts.beatCutsMs) : vibeTempo(vibe);
+  const durations = beatAlignedDurations(COVER_MS, slideCount, perSlideMs, beats, {
+    minMs: MIN_SLIDE_MS * 0.7,
+    maxMs: MAX_SLIDE_MS * 1.25,
+  });
+
   const slides: ReelSlide[] = chosen.map((p, i) => ({
     photoId: p.id,
-    durationMs: perSlideMs,
+    durationMs: durations[i] ?? perSlideMs,
     motion: seededMotion(seed, i),
     transition: REEL_TRANSITIONS[(seed + i) % REEL_TRANSITIONS.length],
   }));
@@ -112,6 +135,7 @@ export function buildReelDoc(
     coverDurationMs: COVER_MS,
     outroDurationMs: OUTRO_MS,
     transitionMs: TRANSITION_MS,
+    bpm,
     slides,
     durationMs,
     createdAt: Date.now(),

@@ -106,8 +106,11 @@ const verdict = await page.evaluate(
     const px = g.getImageData(0, 0, Math.min(w, 300), Math.min(h, 300)).data;
     for (let i = 0; i < px.length; i += 4) lum += px[i] + px[i + 1] + px[i + 2];
     const meanLum = lum / (px.length / 4) / 3;
+    // audio track present? (procedural bed should be muxed in)
+    const audioBytes = v.webkitAudioDecodedByteCount ?? 0;
+    const audioTracks = v.audioTracks ? v.audioTracks.length : (v.mozHasAudio ? 1 : 0);
     URL.revokeObjectURL(url);
-    return { loaded: true, w, h, meanLum, advanced };
+    return { loaded: true, w, h, meanLum, advanced, audioBytes, audioTracks };
   },
   { b64, mime },
 );
@@ -117,6 +120,9 @@ else {
   console.log(`✓ reel loads: ${verdict.w}×${verdict.h}, meanLum=${verdict.meanLum.toFixed(1)}, plays=${verdict.advanced}`);
   if (verdict.w !== 1080 || verdict.h !== 1920) errors.push(`expected 1080×1920, got ${verdict.w}×${verdict.h}`);
   if (verdict.meanLum < 4) errors.push('exported reel first frame is essentially black');
+  const hasAudio = verdict.audioBytes > 0 || verdict.audioTracks > 0;
+  console.log(`✓ soundtrack: audioBytes=${verdict.audioBytes}, tracks=${verdict.audioTracks}, present=${hasAudio}`);
+  if (!hasAudio) errors.push('exported reel has no audio track (procedural bed not muxed)');
 }
 
 await page.waitForTimeout(200);

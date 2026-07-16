@@ -54,6 +54,8 @@ export interface ReelDoc {
   coverDurationMs: number;
   outroDurationMs: number;
   transitionMs: number;
+  /** tempo the slides were cut to — drives the procedural soundtrack bed */
+  bpm: number;
   slides: ReelSlide[];
   /** whole-reel length in ms (cover + Σ slide + outro; transitions overlap) */
   durationMs: number;
@@ -243,6 +245,7 @@ export function normalizeReelDoc(input: unknown): ReelDoc {
     coverDurationMs,
     outroDurationMs,
     transitionMs: clamp(num(d.transitionMs, 520), 0, 2000),
+    bpm: clamp(num(d.bpm, 100), 40, 220),
     slides,
     durationMs: coverDurationMs + slides.reduce((s, sl) => s + sl.durationMs, 0) + outroDurationMs,
     createdAt: num(d.createdAt, now),

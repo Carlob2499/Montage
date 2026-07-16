@@ -3,6 +3,7 @@ import type { ReelDoc } from '../../lib/reel/reelDoc';
 import { buildTimeline, segmentAt } from '../../lib/reel/reelDoc';
 import { drawReelFrame } from '../../lib/reel/reelFrame';
 import { loadReelResources, releaseReelResources } from '../../lib/reel/reelExport';
+import { renderVibeBed } from '../../lib/audio/synth';
 import type { ReelResources } from '../../lib/reel/reelFrame';
 
 /**
@@ -10,9 +11,19 @@ import type { ReelResources } from '../../lib/reel/reelFrame';
  * uses (preview/export parity over time) via a rAF loop. Story-style progress
  * ticks (one per segment), tap left/right to skip, tap center to play/pause.
  */
-export default function ReelPlayer({ doc }: { doc: ReelDoc }) {
+export default function ReelPlayer({
+  doc,
+  muted = false,
+  audioBuffer = null,
+}: {
+  doc: ReelDoc;
+  muted?: boolean;
+  audioBuffer?: AudioBuffer | null;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const resRef = useRef<ReelResources | null>(null);
+  const bedRef = useRef<AudioBuffer | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(true);
   // absolute playhead in ms, driven by rAF; kept in a ref to avoid re-renders
@@ -73,6 +84,73 @@ export default function ReelPlayer({ doc }: { doc: ReelDoc }) {
     // segs is derived from doc; playing/ready gate the loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, playing, doc]);
+
+  // prepare the soundtrack bed (or use the user's track) when the reel changes
+  useEffect(() => {
+    let cancelled = false;
+    bedRef.current = null;
+    if (audioBuffer) {
+      bedRef.current = audioBuffer;
+      return;
+    }
+    (async () => {
+      const bed = await renderVibeBed(doc.vibe, doc.durationMs).catch(() => null);
+      if (!cancelled) bedRef.current = bed;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, audioBuffer]);
+
+  // preview audio: while playing + unmuted, loop the bed in sync with the reel
+  // (same length + started at the current phase → stays aligned with the loop)
+  useEffect(() => {
+    if (muted || !playing || !ready) return;
+    let src: AudioBufferSourceNode | null = null;
+    let stopped = false;
+    const AC =
+      (typeof AudioContext !== 'undefined' && AudioContext) ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const start = () => {
+      if (stopped) return;
+      const bed = bedRef.current;
+      if (!bed) {
+        setTimeout(start, 120); // bed still rendering — retry shortly
+        return;
+      }
+      const ctx = audioCtxRef.current ?? new AC();
+      audioCtxRef.current = ctx;
+      void ctx.resume();
+      src = ctx.createBufferSource();
+      src.buffer = bed;
+      src.loop = true;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.9;
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      const offset = (tRef.current / 1000) % bed.duration;
+      src.start(0, offset);
+    };
+    start();
+    return () => {
+      stopped = true;
+      if (src) {
+        try {
+          src.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+    };
+  }, [muted, playing, ready, doc]);
+
+  useEffect(
+    () => () => {
+      if (audioCtxRef.current) void audioCtxRef.current.close();
+    },
+    [],
+  );
 
   const skip = (dir: -1 | 1) => {
     const { index } = segmentAt(segs, tRef.current);

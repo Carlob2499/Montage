@@ -68,6 +68,13 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
    `normalizeReelDoc` (invariant #4). Codec is feature-detected (`pickMimeType`: MP4 on
    Safari, WebM elsewhere). MediaRecorder output has no container duration — `video.duration`
    is Infinity and `currentTime=0` decodes black; sample a frame only AFTER `play()`.
+   **Soundtrack** (`src/lib/audio/*`, offline): every reel gets a procedural vibe-matched
+   bed by default (`renderVibeBed` — a pad chord + kick on each beat via
+   `OfflineAudioContext`, no licensing/bundle weight), muxed into the export by adding a
+   `MediaStreamAudioDestinationNode` track to the capture stream. Slides are cut on the beat
+   (`beatAlignedDurations`) — the vibe tempo grid by default, or a user track's detected
+   beats (`detectBeats`: energy-flux + autocorrelation, pure + tested). User audio is
+   session-only (in-memory `AudioBuffer`); Dexie persistence is a deferred follow-up.
 
 ## Mobile/iOS constraints (bugs already paid for)
 
@@ -144,4 +151,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 225 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 237 tests.
