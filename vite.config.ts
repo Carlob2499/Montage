@@ -28,8 +28,8 @@ export default defineConfig({
         short_name: 'Montage',
         description:
           'Photo collage and seamless Instagram carousel studio. Local-first — photos never leave your device.',
-        theme_color: '#101014',
-        background_color: '#101014',
+        theme_color: '#0e0c0a',
+        background_color: '#0e0c0a',
         display: 'standalone',
         orientation: 'any',
         start_url: '/Montage/',

@@ -93,6 +93,32 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   ~8 video layers autoplay in the editor (`MAX_CONCURRENT_VIDEOS` in `CanvasStage`); the
   rest hold their poster. The global `motion` toggle (`uiStore`) freezes all clips.
 
+## Design system — "the darkroom" (dark-first, one identity)
+
+- The app is a warm tungsten darkroom: `.dark` is PINNED on `<html>` (index.html) and the
+  `dark:` variant is bound to it via `@custom-variant` — there is no light mode. The whole
+  identity lives in `src/index.css` @theme tokens: a warm charcoal `ink` ramp (#0e0c0a base,
+  amber undertones — never blue-black) and a tungsten-amber `accent` ramp. Amber = action
+  (btn-primary/chip-active are amber with near-black text). The full spectrum gradient
+  (`--beam`, amber→pink→violet) is the signature and is RESERVED for hero moments only:
+  the wordmark "Studio", the Home hero's drifting glow, the title-sequence progress bar.
+  Don't scatter it.
+- Chrome typography = the reels' own cover face: Playfair Display (`font-serif`) for
+  wordmark/hero/overlay lines; Space Grotesk for UI labels. Tracked-uppercase micro-labels
+  (`tracking-[0.28em]` etc.) are the section-eyebrow idiom.
+- Motion is GSAP (`src/lib/fx/useFx.ts`): `useEntrance` (staggered [data-rise] rise-in, one
+  orchestrated sequence per screen) and `useTilt` (pointer parallax, desktop only). Ambient
+  CSS: `.beam-drift`, `.sheen`, `.film-grain` (SVG-noise overlay). EVERYTHING is gated on
+  prefers-reduced-motion. [data-rise] elements start at inline `opacity: 0` — GSAP (or the
+  reduced-motion branch) reveals them; Playwright still treats opacity:0 as visible.
+- **CSS gotcha (paid for):** unlayered author CSS beats Tailwind's layered utilities — base
+  element rules (h1 font-family etc.) MUST live in `@layer base` or they override utility
+  classes like `font-serif`.
+- UX rule: non-technical-first. Per-project actions live behind one ⋯ menu ("Make a copy",
+  "Save backup file", "Delete"); JSON restore is a single quiet icon button. Load-bearing
+  smoke strings on Home/Welcome: "Auto Montage", "Try a demo trip", "New project",
+  "Photo Library", "Get started", "Keep it as an app".
+
 ## Recurring JS/React gotchas hit in this codebase
 
 - `FileList` is LIVE: materialize `Array.from(input.files)` BEFORE `input.value = ''`.

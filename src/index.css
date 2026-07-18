@@ -1,36 +1,49 @@
 @import 'tailwindcss';
 
+/* Dark-first, one identity: the .dark class is pinned on <html>, so every
+   dark: variant is always on. The app is a darkroom — the photos glow. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
 
-  /* neutral "ink" ramp — warm-cool balanced, deep blacks for OLED */
-  --color-ink-50: #f7f7f9;
-  --color-ink-100: #eeeef1;
-  --color-ink-200: #dedee3;
-  --color-ink-300: #bcbcc6;
-  --color-ink-400: #8b8b98;
-  --color-ink-500: #63636f;
-  --color-ink-600: #45454f;
-  --color-ink-700: #2b2b33;
-  --color-ink-800: #1a1a1f;
-  --color-ink-900: #121216;
-  --color-ink-950: #0a0a0d;
+  /* warm tungsten "ink" ramp — charcoal with amber undertones, not blue-black.
+     Same token names as before so every existing class re-skins itself. */
+  --color-ink-50: #f5f1ea;
+  --color-ink-100: #ece5da;
+  --color-ink-200: #d9d0c1;
+  --color-ink-300: #b5aa99;
+  --color-ink-400: #8d8272;
+  --color-ink-500: #6e6355;
+  --color-ink-600: #4e453b;
+  --color-ink-700: #362f27;
+  --color-ink-800: #221d17;
+  --color-ink-900: #171310;
+  --color-ink-950: #0e0c0a;
 
-  /* accent — electric violet, matches the brand gradient's violet end */
-  --color-accent-300: #c8b6ff;
-  --color-accent-400: #a689ff;
-  --color-accent-500: #7c5cff;
-  --color-accent-600: #6035e6;
-  --color-accent-700: #4b23c4;
+  /* accent — projector tungsten. Warm amber is the action color; the full
+     spectrum beam (amber→halation pink→violet) is reserved for hero moments. */
+  --color-accent-300: #ffd9a0;
+  --color-accent-400: #f8c06a;
+  --color-accent-500: #eda437;
+  --color-accent-600: #c97f1d;
+  --color-accent-700: #9c5f12;
 
   --radius-xl: 0.875rem;
   --radius-2xl: 1.125rem;
 
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px -4px rgb(0 0 0 / 0.10);
-  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.05), 0 12px 32px -8px rgb(0 0 0 / 0.18);
-  --shadow-accent: 0 6px 20px -6px rgb(124 92 255 / 0.55);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 16px -4px rgb(0 0 0 / 0.35);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 16px 40px -8px rgb(0 0 0 / 0.55);
+  --shadow-accent: 0 6px 24px -6px rgb(237 164 55 / 0.45);
+}
+
+/* the projector beam — the one place the full spectrum is allowed */
+:root {
+  --beam: linear-gradient(105deg, #f8c06a, #f27a9d 46%, #8f6bff);
+  --beam-soft: linear-gradient(105deg, rgb(248 192 106 / 0.22), rgb(242 122 157 / 0.16) 46%, rgb(143 107 255 / 0.2));
 }
 
 @font-face {
@@ -64,43 +77,50 @@
   font-display: swap;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  overscroll-behavior: none;
-}
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overscroll-behavior: none;
+  }
 
-body {
-  @apply bg-ink-50 text-ink-900 antialiased;
-  font-family: var(--font-sans);
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-@media (prefers-color-scheme: dark) {
   body {
-    @apply bg-ink-950 text-ink-100;
+    @apply bg-ink-950 text-ink-100 antialiased;
+    font-family: var(--font-sans);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* keyboard users get a clear focus ring; pointer users don't */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 }
 
-/* keyboard users get a clear focus ring; pointer users don't */
-:focus-visible {
-  outline: 2px solid var(--color-accent-500);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-h1,
-h2,
-h3 {
-  font-family: var(--font-display);
-  letter-spacing: -0.01em;
+/* --- film grain: a whisper of texture over the whole room ----------------- */
+@utility film-grain {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* --- surfaces + cards ---------------------------------------------------- */
 @utility surface {
-  @apply bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700;
+  @apply bg-ink-900 border border-ink-700/60;
 }
 
 @utility card {
@@ -108,35 +128,39 @@ h3 {
   box-shadow: var(--shadow-soft);
 }
 
+/* faint warm hairline for section rules */
+@utility hairline {
+  @apply border-ink-700/50;
+}
+
 /* --- buttons: 44px min touch target, clear hierarchy --------------------- */
 @utility btn {
   @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5
     text-sm font-semibold leading-none select-none cursor-pointer
-    transition-[transform,background-color,box-shadow,opacity] duration-150
+    transition-[transform,background-color,box-shadow,opacity,filter] duration-150
     active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
 }
 
+/* primary = a tungsten bulb: warm amber, near-black text */
 @utility btn-primary {
-  @apply btn text-white hover:brightness-110;
-  background-image: linear-gradient(to bottom, var(--color-accent-400), var(--color-accent-600));
+  @apply btn text-ink-950 hover:brightness-110;
+  background-image: linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500));
   box-shadow: var(--shadow-accent);
 }
 
 @utility btn-soft {
-  @apply btn bg-ink-100 dark:bg-ink-800 text-ink-800 dark:text-ink-100
-    hover:bg-ink-200 dark:hover:bg-ink-700;
+  @apply btn bg-ink-800 text-ink-100 hover:bg-ink-700;
 }
 
 @utility btn-ghost {
-  @apply btn bg-transparent text-ink-600 dark:text-ink-300
-    hover:bg-ink-100 dark:hover:bg-ink-800 active:bg-ink-200 dark:active:bg-ink-700;
+  @apply btn bg-transparent text-ink-300 hover:bg-ink-800 active:bg-ink-700;
 }
 
 /* square icon button — guaranteed 44px hit area */
 @utility icon-btn {
   @apply inline-grid min-h-11 min-w-11 place-items-center rounded-xl bg-transparent
-    text-ink-600 dark:text-ink-300 transition-[transform,background-color] duration-150
-    active:scale-[0.94] hover:bg-ink-100 dark:hover:bg-ink-800 cursor-pointer
+    text-ink-300 transition-[transform,background-color] duration-150
+    active:scale-[0.94] hover:bg-ink-800 cursor-pointer
     disabled:pointer-events-none disabled:opacity-40;
 }
 
@@ -144,37 +168,37 @@ h3 {
 @utility chip {
   @apply inline-flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold
     leading-none transition-colors duration-150 cursor-pointer select-none
-    bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300;
+    bg-ink-800 text-ink-300;
 }
 @utility chip-active {
-  @apply chip text-white;
-  background-image: linear-gradient(to bottom, var(--color-accent-400), var(--color-accent-600));
+  @apply chip text-ink-950;
+  background-image: linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500));
 }
 
 @utility input-base {
-  @apply w-full min-h-11 rounded-xl border border-ink-200 dark:border-ink-700
-    bg-white dark:bg-ink-800 px-3.5 py-2.5 text-sm outline-none
-    transition-colors duration-150 placeholder:text-ink-400
+  @apply w-full min-h-11 rounded-xl border border-ink-700
+    bg-ink-800 px-3.5 py-2.5 text-sm outline-none text-ink-100
+    transition-colors duration-150 placeholder:text-ink-500
     focus:border-accent-400 focus:ring-2 focus:ring-accent-500/25;
 }
 
 @utility sheet {
-  @apply fixed inset-x-0 bottom-0 z-40 rounded-t-3xl bg-white dark:bg-ink-900
-    border-t border-ink-200 dark:border-ink-700
+  @apply fixed inset-x-0 bottom-0 z-40 rounded-t-3xl bg-ink-900
+    border-t border-ink-700
     pb-[max(env(safe-area-inset-bottom),0.75rem)];
   box-shadow: var(--shadow-lift);
 }
 
-/* --- range slider: larger, gradient track thumb ------------------------- */
+/* --- range slider: larger, warm thumb ------------------------------------ */
 input[type='range'] {
-  @apply h-2 w-full appearance-none rounded-full bg-ink-200 dark:bg-ink-700 outline-none;
+  @apply h-2 w-full appearance-none rounded-full bg-ink-700 outline-none;
 }
 input[type='range']::-webkit-slider-thumb {
-  @apply h-6 w-6 appearance-none rounded-full bg-accent-500 border-2 border-white dark:border-ink-900;
+  @apply h-6 w-6 appearance-none rounded-full bg-accent-400 border-2 border-ink-900;
   box-shadow: var(--shadow-soft);
 }
 input[type='range']::-moz-range-thumb {
-  @apply h-6 w-6 rounded-full bg-accent-500 border-2 border-white dark:border-ink-900;
+  @apply h-6 w-6 rounded-full bg-accent-400 border-2 border-ink-900;
   box-shadow: var(--shadow-soft);
 }
 
@@ -183,4 +207,54 @@ input[type='range']::-moz-range-thumb {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* --- ambient beam drift (hero backdrop) ---------------------------------- */
+@keyframes beam-drift {
+  0% {
+    transform: translate3d(-6%, -4%, 0) rotate(-2deg) scale(1.05);
+  }
+  50% {
+    transform: translate3d(5%, 3%, 0) rotate(2deg) scale(1.12);
+  }
+  100% {
+    transform: translate3d(-6%, -4%, 0) rotate(-2deg) scale(1.05);
+  }
+}
+.beam-drift {
+  animation: beam-drift 14s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* slow sheen sweep across the hero button */
+@keyframes sheen-sweep {
+  0%, 72% {
+    transform: translateX(-130%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(230%) skewX(-18deg);
+  }
+}
+.sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.14), transparent);
+  animation: sheen-sweep 5.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beam-drift,
+  .sheen::after {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

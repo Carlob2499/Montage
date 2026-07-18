@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import gsap from 'gsap';
 import { db, deleteProjectSnapshots, uid } from '../../db/db';
 import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
@@ -13,12 +14,25 @@ import { createMontageFromFiles } from '../../lib/curation/autoMontageFlow';
 import type { MontageProgress } from '../../lib/curation/autoMontageFlow';
 import { generateSampleFiles } from '../../lib/demo/sampleTrip';
 import { useMontageStore } from '../../state/montageStore';
+import { useEntrance, useTilt, prefersReducedMotion } from '../../lib/fx/useFx';
 
-const STAGE_LABEL: Record<MontageProgress['stage'], string> = {
-  importing: 'Importing your photos',
-  scoring: 'Picking the best shots',
-  stitching: 'Stitching your montage',
+/** the title-sequence lines for the making-of overlay */
+const STAGE_LINE: Record<MontageProgress['stage'], string> = {
+  importing: 'Reading your photos',
+  scoring: 'Choosing the keepers',
+  stitching: 'Cutting your story',
 };
+
+/** human time: the reader thinks "2h ago", not in ISO strings */
+function timeAgo(ts: number): string {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 172800) return 'yesterday';
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 export default function HomeScreen() {
   const go = useUIStore((s) => s.go);
@@ -26,7 +40,14 @@ export default function HomeScreen() {
   const projects = useLiveQuery(() => db.projects.orderBy('updatedAt').reverse().toArray(), []);
   const [showNew, setShowNew] = useState(false);
   const [montaging, setMontaging] = useState<MontageProgress | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const montageRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLButtonElement>(null);
+
+  useEntrance(rootRef, []);
+  useTilt(heroRef);
 
   const runAutoMontage = async (files: File[]) => {
     setMontaging({ stage: 'importing', done: 0, total: files.length });
@@ -48,6 +69,7 @@ export default function HomeScreen() {
       setMontaging(null);
     }
   };
+
   const runDemo = async () => {
     setMontaging({ stage: 'importing', done: 0, total: 6 });
     try {
@@ -59,7 +81,6 @@ export default function HomeScreen() {
       setMontaging(null);
     }
   };
-  const importRef = useRef<HTMLInputElement>(null);
 
   const openProject = (doc: ProjectDoc) => {
     useProjectStore.getState().loadProject(doc);
@@ -75,7 +96,7 @@ export default function HomeScreen() {
       updatedAt: Date.now(),
     };
     await db.projects.put(copy);
-    toast('Project duplicated', 'success');
+    toast('Copy made', 'success');
   };
 
   const remove = async (doc: ProjectDoc) => {
@@ -100,53 +121,69 @@ export default function HomeScreen() {
       doc.id = uid(); // avoid clobbering an existing project
       doc.updatedAt = Date.now();
       await db.projects.put(doc);
-      toast(`Imported "${doc.name}"`, 'success');
+      toast(`Restored "${doc.name}"`, 'success');
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Import failed', 'error');
+      toast(err instanceof Error ? err.message : 'That file could not be restored', 'error');
     }
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col px-4 pt-[max(env(safe-area-inset-top),1rem)]">
-      <header className="flex items-center justify-between py-4">
-        <div>
-          <h1 className="font-['Space_Grotesk'] text-2xl font-bold tracking-tight">
-            Montage{' '}
-            <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-violet-500 bg-clip-text text-transparent">
-              Studio
-            </span>
-          </h1>
-          <p className="text-sm text-ink-400">
-            Seamless carousels, on your device only ·{' '}
-            <button
-              className="underline decoration-dotted underline-offset-2"
-              onClick={() => useUIStore.getState().showWelcome()}
-            >
-              about
-            </button>
-          </p>
-        </div>
-        <button className="btn-soft" onClick={() => go('library')}>
-          Photo Library
-        </button>
+    <div
+      ref={rootRef}
+      className="relative mx-auto flex h-full max-w-3xl flex-col overflow-y-auto px-5 pt-[max(env(safe-area-inset-top),1rem)]"
+      onClick={() => menuFor && setMenuFor(null)}
+    >
+      <div className="film-grain" aria-hidden />
+
+      {/* wordmark — the app speaks in its films' own voice */}
+      <header data-rise className="pb-5 pt-6" style={{ opacity: 0 }}>
+        <h1 className="font-serif text-[2.1rem] font-bold leading-none tracking-tight text-ink-50">
+          Montage
+          <span className="ml-2 bg-clip-text italic text-transparent" style={{ backgroundImage: 'var(--beam)' }}>
+            Studio
+          </span>
+        </h1>
+        <p className="mt-2 text-[13px] text-ink-400">
+          Films from your photos — made on your device, never uploaded ·{' '}
+          <button
+            className="underline decoration-dotted underline-offset-2"
+            onClick={() => useUIStore.getState().showWelcome()}
+          >
+            about
+          </button>
+        </p>
       </header>
 
-      {/* one-tap flagship: dump photos → finished curated montage */}
+      {/* the hero: a projector switched on in a dark room */}
       <button
-        className="group relative mb-3 flex w-full items-center gap-3 overflow-hidden rounded-2xl p-4 text-left text-white shadow-lg transition-transform active:scale-[0.99]"
-        style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #a689ff 45%, #f472b6)' }}
+        ref={heroRef}
+        data-rise
+        className="sheen group relative mb-2 w-full overflow-hidden rounded-3xl border border-ink-700/60 bg-ink-900 p-6 text-left shadow-lg transition-transform active:scale-[0.99]"
+        style={{ opacity: 0 }}
         onClick={() => montageRef.current?.click()}
       >
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/20">
-          <Icon name="sparkles" size={24} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-display text-base font-bold leading-tight">Auto Montage</span>
-          <span className="block text-xs text-white/85">
-            Dump your photos — I’ll pick the best & stitch them
-          </span>
-        </span>
-        <Icon name="chevron-right" size={20} className="text-white/70" />
+        {/* the beam */}
+        <div
+          aria-hidden
+          className="beam-drift pointer-events-none absolute -inset-14"
+          style={{ backgroundImage: 'var(--beam-soft)', filter: 'blur(28px)' }}
+        />
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-950/70 via-transparent to-transparent" />
+        <div className="relative">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-accent-300/90">
+            Auto Montage
+          </div>
+          <div className="mt-2.5 max-w-[17ch] font-serif text-[1.9rem] font-bold leading-[1.12] text-ink-50">
+            Turn a photo dump into a short film
+          </div>
+          <div className="mt-2 text-sm leading-relaxed text-ink-300">
+            Drop in your camera roll — the best shots are picked, framed and cut to music for you.
+          </div>
+          <div className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-ink-950 shadow-lg" style={{ backgroundImage: 'linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500))' }}>
+            <Icon name="sparkles" size={18} />
+            Make my montage
+          </div>
+        </div>
       </button>
       <input
         ref={montageRef}
@@ -160,107 +197,221 @@ export default function HomeScreen() {
           if (files.length) void runAutoMontage(files);
         }}
       />
-      <div className="mb-3 -mt-1 text-center">
+      <div data-rise className="mb-6 pt-1 text-center" style={{ opacity: 0 }}>
         <button
-          className="text-xs text-ink-400 underline decoration-dotted underline-offset-2"
+          className="min-h-9 text-xs text-ink-400 underline decoration-dotted underline-offset-2"
           onClick={() => void runDemo()}
         >
           No photos handy? Try a demo trip →
         </button>
       </div>
 
-      <div className="flex gap-2 pb-4">
-        <button className="btn-soft flex-1" onClick={() => setShowNew(true)}>
-          <Icon name="plus" size={18} />
-          New project
-        </button>
-        <button className="btn-soft" onClick={() => importRef.current?.click()}>
-          Import JSON
-        </button>
-        <input
-          ref={importRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void importJson(f);
-            e.target.value = '';
-          }}
-        />
-      </div>
+      {/* your work */}
+      <div data-rise className="min-h-0 flex-1 pb-4" style={{ opacity: 0 }}>
+        <div className="mb-3 flex items-center gap-3">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-ink-500">
+            Your work
+          </span>
+          <span className="hairline h-px flex-1 border-t" />
+        </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-8">
         {projects?.length === 0 && (
-          <div className="surface rounded-2xl p-8 text-center text-ink-400">
-            No projects yet. Start with a new project, then pull photos in from your library.
+          <div className="card p-8 text-center text-sm leading-relaxed text-ink-400">
+            Nothing here yet — your montages will live on this shelf.
+            <br />
+            Start above, or try the demo trip.
           </div>
         )}
-        {projects && projects.length > 0 && (
-          <button
-            className="w-full rounded-2xl bg-gradient-to-r from-accent-500 to-accent-600 p-4 text-left text-white shadow-lg transition-transform active:scale-[0.99]"
-            onClick={() => openProject(projects[0])}
-          >
-            <div className="text-xs font-medium uppercase tracking-wide text-white/70">
-              Continue where you left off
-            </div>
-            <div className="truncate text-lg font-bold">{projects[0].name}</div>
-            <div className="text-xs text-white/70">
-              {projects[0].mode === 'grid'
-                ? `Profile grid · 3×${projects[0].panelCount}`
-                : `Carousel · ${projects[0].panelCount} × ${projects[0].aspect}`}{' '}
-              · {new Date(projects[0].updatedAt).toLocaleString()}
-            </div>
-          </button>
-        )}
-        {projects?.map((p) => (
-          <div key={p.id} className="surface flex items-center gap-3 rounded-2xl p-4">
-            <button className="min-w-0 flex-1 text-left" onClick={() => openProject(p)}>
-              <div className="truncate font-semibold">{p.name}</div>
-              <div className="text-xs text-ink-400">
-                {p.mode === 'grid'
-                  ? `Profile grid · 3×${p.panelCount}`
-                  : `Carousel · ${p.panelCount} × ${p.aspect}`}{' '}
-                · {new Date(p.updatedAt).toLocaleString()}
+
+        <div className="space-y-2 pb-6">
+          {projects && projects.length > 0 && (
+            <button
+              className="card group w-full overflow-hidden p-4 text-left transition-transform active:scale-[0.99]"
+              onClick={() => openProject(projects[0])}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-accent-400">
+                Continue where you left off
+              </div>
+              <div className="mt-1 truncate font-serif text-xl font-bold text-ink-50">
+                {projects[0].name}
+              </div>
+              <div className="mt-0.5 text-xs text-ink-400">
+                {projects[0].mode === 'grid'
+                  ? `Profile grid · 3×${projects[0].panelCount}`
+                  : `${projects[0].panelCount} panels · ${projects[0].aspect}`}{' '}
+                · {timeAgo(projects[0].updatedAt)}
               </div>
             </button>
-            <button className="icon-btn" title="Export JSON backup" aria-label="Export JSON backup" onClick={() => exportJson(p)}>
-              <Icon name="download" size={20} />
-            </button>
-            <button className="icon-btn" title="Duplicate" aria-label="Duplicate" onClick={() => void duplicate(p)}>
-              <Icon name="copy" size={20} />
-            </button>
-            <button className="icon-btn text-red-500" title="Delete" aria-label="Delete" onClick={() => void remove(p)}>
-              <Icon name="trash" size={20} />
-            </button>
-          </div>
-        ))}
+          )}
+
+          {projects?.slice(projects.length > 0 ? 1 : 0).map((p) => (
+            <div key={p.id} className="surface relative flex items-center rounded-2xl">
+              <button className="min-w-0 flex-1 p-4 text-left" onClick={() => openProject(p)}>
+                <div className="truncate text-sm font-semibold text-ink-100">{p.name}</div>
+                <div className="mt-0.5 text-xs text-ink-500">
+                  {p.mode === 'grid'
+                    ? `Profile grid · 3×${p.panelCount}`
+                    : `${p.panelCount} panels · ${p.aspect}`}{' '}
+                  · {timeAgo(p.updatedAt)}
+                </div>
+              </button>
+              <button
+                className="icon-btn mr-1"
+                aria-label="More options"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuFor(menuFor === p.id ? null : p.id);
+                }}
+              >
+                <Icon name="more" size={20} />
+              </button>
+              {menuFor === p.id && (
+                <div
+                  className="card absolute right-2 top-14 z-20 w-44 overflow-hidden p-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MenuItem
+                    icon="copy"
+                    label="Make a copy"
+                    onClick={() => {
+                      setMenuFor(null);
+                      void duplicate(p);
+                    }}
+                  />
+                  <MenuItem
+                    icon="download"
+                    label="Save backup file"
+                    onClick={() => {
+                      setMenuFor(null);
+                      exportJson(p);
+                    }}
+                  />
+                  <MenuItem
+                    icon="trash"
+                    label="Delete"
+                    danger
+                    onClick={() => {
+                      setMenuFor(null);
+                      void remove(p);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* quiet utility row — the technical stuff, out of the way */}
+        <div className="flex items-center gap-2 pb-8">
+          <button className="btn-soft flex-1" onClick={() => go('library')}>
+            <Icon name="image" size={18} />
+            Photo Library
+          </button>
+          <button className="btn-soft flex-1" onClick={() => setShowNew(true)}>
+            <Icon name="plus" size={18} />
+            New project
+          </button>
+          <button
+            className="icon-btn"
+            title="Restore a backup file"
+            aria-label="Restore a backup file"
+            onClick={() => importRef.current?.click()}
+          >
+            <Icon name="share" size={20} className="rotate-180" />
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void importJson(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
       </div>
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} onCreate={openProject} />}
-      {montaging && <MontageProgressOverlay progress={montaging} />}
+      {montaging && <TitleSequenceOverlay progress={montaging} />}
     </div>
   );
 }
 
-function MontageProgressOverlay({ progress }: { progress: MontageProgress }) {
-  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+function MenuItem({
+  icon,
+  label,
+  danger,
+  onClick,
+}: {
+  icon: Parameters<typeof Icon>[0]['name'];
+  label: string;
+  danger?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm">
-      <div className="card w-[300px] p-6 text-center">
-        <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl text-white" style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #f472b6)' }}>
-          <Icon name="sparkles" size={28} />
+    <button
+      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-ink-800 ${
+        danger ? 'text-red-400' : 'text-ink-100'
+      }`}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={17} />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The making-of moment as a title sequence: black room, one serif line that
+ * crossfades per stage, a thin beam of light filling below it.
+ */
+function TitleSequenceOverlay({ progress }: { progress: MontageProgress }) {
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  const lineRef = useRef<HTMLDivElement>(null);
+  const lastStage = useRef<MontageProgress['stage']>(progress.stage);
+
+  // crossfade the stage line when the stage changes
+  useEffect(() => {
+    if (lastStage.current === progress.stage) return;
+    lastStage.current = progress.stage;
+    if (lineRef.current && !prefersReducedMotion()) {
+      gsap.fromTo(
+        lineRef.current,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' },
+      );
+    }
+  }, [progress.stage]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-ink-950">
+      <div className="film-grain" aria-hidden />
+      {/* faint beam from above */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-0 h-[70%] w-[130%] -translate-x-1/2 opacity-40"
+        style={{
+          background:
+            'radial-gradient(ellipse 45% 60% at 50% 0%, rgb(248 192 106 / 0.16), transparent 70%)',
+        }}
+      />
+      <div className="relative w-full max-w-sm px-10 text-center">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.4em] text-ink-500">
+          Making your montage
         </div>
-        <div className="font-display text-base font-bold">Creating your montage…</div>
-        <div className="mt-1 text-xs text-ink-400">
-          {STAGE_LABEL[progress.stage]}
-          {progress.total > 1 ? ` · ${progress.done}/${progress.total}` : ''}
+        <div ref={lineRef} className="mt-4 font-serif text-3xl font-bold italic leading-snug text-ink-50">
+          {STAGE_LINE[progress.stage]}…
         </div>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-700">
+        <div className="mx-auto mt-8 h-px w-full overflow-hidden rounded-full bg-ink-800">
           <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${pct}%`, backgroundImage: 'linear-gradient(90deg, #7c5cff, #f472b6)' }}
+            className="h-full transition-[width] duration-500 ease-out"
+            style={{ width: `${Math.max(4, pct)}%`, backgroundImage: 'var(--beam)' }}
           />
+        </div>
+        <div className="mt-3 text-xs tabular-nums text-ink-500">
+          {progress.total > 1 ? `${progress.done} of ${progress.total}` : `${pct}%`}
         </div>
       </div>
     </div>
@@ -298,7 +449,7 @@ function NewProjectDialog({
 
   return (
     <>
-      <div className="fixed inset-0 z-30 bg-black/30" onClick={onClose} />
+      <div className="fixed inset-0 z-30 bg-black/50" onClick={onClose} />
       <div className="sheet z-40 md:inset-auto md:left-1/2 md:top-1/2 md:w-[420px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl md:border">
         <div className="space-y-4 p-5">
           <h3 className="text-lg font-semibold">New project</h3>
@@ -331,8 +482,8 @@ function NewProjectDialog({
                     key={p.aspect}
                     className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
                       !custom && aspect === p.aspect
-                        ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
-                        : 'border-ink-200 dark:border-ink-700'
+                        ? 'border-accent-500 bg-accent-500/10 text-accent-300'
+                        : 'border-ink-700'
                     }`}
                     onClick={() => {
                       setCustom(false);
@@ -345,8 +496,8 @@ function NewProjectDialog({
                 <button
                   className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
                     custom
-                      ? 'border-accent-500 bg-accent-500/10 text-accent-600 dark:text-accent-300'
-                      : 'border-ink-200 dark:border-ink-700'
+                      ? 'border-accent-500 bg-accent-500/10 text-accent-300'
+                      : 'border-ink-700'
                   }`}
                   onClick={() => setCustom(true)}
                 >
@@ -380,9 +531,9 @@ function NewProjectDialog({
             </div>
           )}
           <label className="block text-sm">
-            <span className="mb-1 flex justify-between text-ink-500">
+            <span className="mb-1 flex justify-between text-ink-400">
               <span>{mode === 'grid' ? 'Rows' : 'Panels'}</span>
-              <b className="text-ink-900 dark:text-ink-100">{panels}</b>
+              <b className="text-ink-100">{panels}</b>
             </span>
             <input
               type="range"
@@ -421,9 +572,7 @@ function ModeButton({
     <button
       onClick={onClick}
       className={`rounded-xl border p-3 text-left transition-colors ${
-        active
-          ? 'border-accent-500 bg-accent-500/10'
-          : 'border-ink-200 dark:border-ink-700 hover:bg-ink-100 dark:hover:bg-ink-800'
+        active ? 'border-accent-500 bg-accent-500/10' : 'border-ink-700 hover:bg-ink-800'
       }`}
     >
       <div className="text-sm font-semibold">{title}</div>

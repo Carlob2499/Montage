@@ -29,12 +29,18 @@ const canvas = page.locator('canvas').first();
 await canvas.waitFor({ timeout: 5000 });
 console.log('✓ reel opened in Preview by default');
 
-// animating? two shots ~450ms apart must differ (drawReelFrame is running)
+// animating? poll pairs of frames — the cover holds still by design after its
+// entrance, so sample across a few seconds until a Ken Burns slide is moving
 await page.waitForTimeout(900); // let resources decode + playback start
-const a = await canvas.screenshot();
-await page.waitForTimeout(450);
-const b = await canvas.screenshot();
-if (Buffer.compare(a, b) === 0) errors.push('reel canvas is not animating (identical frames)');
+let animating = false;
+let prev = await canvas.screenshot();
+for (let i = 0; i < 8 && !animating; i++) {
+  await page.waitForTimeout(450);
+  const next = await canvas.screenshot();
+  if (Buffer.compare(prev, next) !== 0) animating = true;
+  prev = next;
+}
+if (!animating) errors.push('reel canvas is not animating (identical frames over 4s)');
 else console.log('✓ reel is animating (frames differ over time)');
 
 // format toggle: switch to Carousel (images appear) then back to Reel

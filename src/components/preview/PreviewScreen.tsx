@@ -489,8 +489,8 @@ export default function PreviewScreen() {
               <Icon name="sliders" size={18} /> Edit
             </button>
             <button
-              className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-70"
-              style={{ backgroundImage: 'linear-gradient(120deg, #7c5cff, #f472b6)' }}
+              className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-ink-950 active:scale-[0.97] disabled:opacity-70"
+              style={{ backgroundImage: 'linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500))' }}
               disabled={exporting}
               onClick={() => void (showReel ? exportReel() : exportCarousel())}
             >

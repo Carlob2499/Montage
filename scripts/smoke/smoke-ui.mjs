@@ -8,7 +8,7 @@ await page.goto(BASE, { waitUntil: 'networkidle' });
 // first run shows the cover page; Explore lands on Home
 await page.waitForSelector('text=Keep it as an app', { timeout: 10000 });
 console.log('✓ cover page renders on first run');
-await page.click('text=Explore first');
+await page.click('text=Get started');
 await page.waitForSelector('text=New project', { timeout: 10000 });
 console.log('✓ home screen renders after Start');
 
