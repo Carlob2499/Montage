@@ -93,27 +93,30 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   ~8 video layers autoplay in the editor (`MAX_CONCURRENT_VIDEOS` in `CanvasStage`); the
   rest hold their poster. The global `motion` toggle (`uiStore`) freezes all clips.
 
-## Design system — "the darkroom" (dark-first, one identity)
+## Design system — "the edit bay" (dark-first, one identity)
 
-- The app is a warm tungsten darkroom: `.dark` is PINNED on `<html>` (index.html) and the
-  `dark:` variant is bound to it via `@custom-variant` — there is no light mode. The whole
-  identity lives in `src/index.css` @theme tokens: a warm charcoal `ink` ramp (#0e0c0a base,
-  amber undertones — never blue-black) and a tungsten-amber `accent` ramp. Amber = action
-  (btn-primary/chip-active are amber with near-black text). The full spectrum gradient
-  (`--beam`, amber→pink→violet) is the signature and is RESERVED for hero moments only:
-  the wordmark "Studio", the Home hero's drifting glow, the title-sequence progress bar.
-  Don't scatter it.
-- Chrome typography = the reels' own cover face: Playfair Display (`font-serif`) for
-  wordmark/hero/overlay lines; Space Grotesk for UI labels. Tracked-uppercase micro-labels
-  (`tracking-[0.28em]` etc.) are the section-eyebrow idiom.
+- The chrome is an edit bay: colorimetrically NEUTRAL graphite (like a D65 grading room) so
+  the user's photos are the only color that matters. `.dark` is PINNED on `<html>` and the
+  `dark:` variant bound via `@custom-variant` — there is no light mode. Identity lives in
+  `src/index.css` @theme tokens: a pure-gray `ink` ramp (#0a0a0a base — NO warm/cool tint,
+  ever) and ONE accent: **record-light vermilion** (#e03a2c), used only where something is
+  live — primary CTA, the pulsing `.rec-dot`, progress/playhead, active chip, focus ring,
+  the wordmark's period. No gradients, no glows, no glassmorphism in chrome. (Grounded in
+  what actually wins on Awwwards: neutral fields + one bold saturated hue + type-led
+  layouts; the previous amber/serif/gradient-beam look was the AI-design cliché.)
+- Chrome typography: Space Grotesk display set BIG and tight (`tracking-[-0.03em]`), Inter
+  body, and system mono for all metadata via the `meta` utility (uppercase, tracked) — the
+  NLE idiom. Sections are indexed ("01 — Auto Montage", "02 — Your work") with hairline
+  rules. Playfair/Lora/Caveat remain BUNDLED but are user-artwork faces (reel covers,
+  canvas text) — never app chrome.
 - Motion is GSAP (`src/lib/fx/useFx.ts`): `useEntrance` (staggered [data-rise] rise-in, one
-  orchestrated sequence per screen) and `useTilt` (pointer parallax, desktop only). Ambient
-  CSS: `.beam-drift`, `.sheen`, `.film-grain` (SVG-noise overlay). EVERYTHING is gated on
-  prefers-reduced-motion. [data-rise] elements start at inline `opacity: 0` — GSAP (or the
-  reduced-motion branch) reveals them; Playwright still treats opacity:0 as visible.
+  orchestrated sequence per screen); `.rec-dot` pulse; `.film-grain` (SVG-noise overlay at
+  0.035). EVERYTHING gated on prefers-reduced-motion. [data-rise] elements start at inline
+  `opacity: 0` — GSAP (or the reduced-motion branch) reveals them; Playwright still treats
+  opacity:0 as visible.
 - **CSS gotcha (paid for):** unlayered author CSS beats Tailwind's layered utilities — base
   element rules (h1 font-family etc.) MUST live in `@layer base` or they override utility
-  classes like `font-serif`.
+  classes.
 - UX rule: non-technical-first. Per-project actions live behind one ⋯ menu ("Make a copy",
   "Save backup file", "Delete"); JSON restore is a single quiet icon button. Load-bearing
   smoke strings on Home/Welcome: "Auto Montage", "Try a demo trip", "New project",

@@ -14,7 +14,7 @@ import { createMontageFromFiles } from '../../lib/curation/autoMontageFlow';
 import type { MontageProgress } from '../../lib/curation/autoMontageFlow';
 import { generateSampleFiles } from '../../lib/demo/sampleTrip';
 import { useMontageStore } from '../../state/montageStore';
-import { useEntrance, useTilt, prefersReducedMotion } from '../../lib/fx/useFx';
+import { useEntrance, prefersReducedMotion } from '../../lib/fx/useFx';
 
 /** the title-sequence lines for the making-of overlay */
 const STAGE_LINE: Record<MontageProgress['stage'], string> = {
@@ -47,7 +47,6 @@ export default function HomeScreen() {
   const heroRef = useRef<HTMLButtonElement>(null);
 
   useEntrance(rootRef, []);
-  useTilt(heroRef);
 
   const runAutoMontage = async (files: File[]) => {
     setMontaging({ stage: 'importing', done: 0, total: files.length });
@@ -135,54 +134,48 @@ export default function HomeScreen() {
     >
       <div className="film-grain" aria-hidden />
 
-      {/* wordmark — the app speaks in its films' own voice */}
-      <header data-rise className="pb-5 pt-6" style={{ opacity: 0 }}>
-        <h1 className="font-serif text-[2.1rem] font-bold leading-none tracking-tight text-ink-50">
-          Montage
-          <span className="ml-2 bg-clip-text italic text-transparent" style={{ backgroundImage: 'var(--beam)' }}>
-            Studio
-          </span>
-        </h1>
-        <p className="mt-2 text-[13px] text-ink-400">
-          Films from your photos — made on your device, never uploaded ·{' '}
-          <button
-            className="underline decoration-dotted underline-offset-2"
-            onClick={() => useUIStore.getState().showWelcome()}
-          >
-            about
+      {/* wordmark — set like a slate, not a logo lockup */}
+      <header data-rise className="pb-6 pt-6" style={{ opacity: 0 }}>
+        <div className="flex items-baseline justify-between">
+          <h1 className="font-display text-[1.35rem] font-bold uppercase leading-none tracking-[-0.02em] text-ink-50">
+            Montage<span className="text-accent-500">.</span>
+          </h1>
+          <button className="meta hover:text-ink-300" onClick={() => useUIStore.getState().showWelcome()}>
+            About
           </button>
+        </div>
+        <p className="meta mt-2 normal-case tracking-[0.14em]">
+          Films from your photos · on-device · private
         </p>
       </header>
 
-      {/* the hero: a projector switched on in a dark room */}
+      {/* the hero: flat, typographic, live */}
       <button
         ref={heroRef}
         data-rise
-        className="sheen group relative mb-2 w-full overflow-hidden rounded-3xl border border-ink-700/60 bg-ink-900 p-6 text-left shadow-lg transition-transform active:scale-[0.99]"
+        className="hairline group relative mb-2 w-full border-y py-7 text-left transition-opacity active:opacity-80"
         style={{ opacity: 0 }}
         onClick={() => montageRef.current?.click()}
       >
-        {/* the beam */}
-        <div
-          aria-hidden
-          className="beam-drift pointer-events-none absolute -inset-14"
-          style={{ backgroundImage: 'var(--beam-soft)', filter: 'blur(28px)' }}
-        />
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink-950/70 via-transparent to-transparent" />
-        <div className="relative">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-accent-300/90">
-            Auto Montage
-          </div>
-          <div className="mt-2.5 max-w-[17ch] font-serif text-[1.9rem] font-bold leading-[1.12] text-ink-50">
-            Turn a photo dump into a short film
-          </div>
-          <div className="mt-2 text-sm leading-relaxed text-ink-300">
-            Drop in your camera roll — the best shots are picked, framed and cut to music for you.
-          </div>
-          <div className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-ink-950 shadow-lg" style={{ backgroundImage: 'linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500))' }}>
-            <Icon name="sparkles" size={18} />
-            Make my montage
-          </div>
+        <div className="flex items-center justify-between">
+          <span className="meta text-ink-400">01 — Auto Montage</span>
+          <span className="flex items-center gap-2">
+            <span className="rec-dot" aria-hidden />
+            <span className="meta text-accent-400">Rec</span>
+          </span>
+        </div>
+        <div className="mt-4 font-display text-[2.5rem] font-bold leading-[1.02] tracking-[-0.03em] text-ink-50">
+          Turn a photo
+          <br />
+          dump into a<br />
+          short film.
+        </div>
+        <div className="mt-3 max-w-[38ch] text-sm leading-relaxed text-ink-400">
+          Drop in your camera roll — the best shots are picked, framed and cut to music for you.
+        </div>
+        <div className="btn-primary mt-6">
+          <Icon name="sparkles" size={18} />
+          Make my montage
         </div>
       </button>
       <input
@@ -208,10 +201,8 @@ export default function HomeScreen() {
 
       {/* your work */}
       <div data-rise className="min-h-0 flex-1 pb-4" style={{ opacity: 0 }}>
-        <div className="mb-3 flex items-center gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-ink-500">
-            Your work
-          </span>
+        <div className="mb-3 flex items-center gap-3 pt-4">
+          <span className="meta">02 — Your work</span>
           <span className="hairline h-px flex-1 border-t" />
         </div>
 
@@ -229,15 +220,13 @@ export default function HomeScreen() {
               className="card group w-full overflow-hidden p-4 text-left transition-transform active:scale-[0.99]"
               onClick={() => openProject(projects[0])}
             >
-              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-accent-400">
-                Continue where you left off
-              </div>
-              <div className="mt-1 truncate font-serif text-xl font-bold text-ink-50">
+              <div className="meta text-accent-400">Continue where you left off</div>
+              <div className="mt-1.5 truncate font-display text-xl font-bold tracking-[-0.02em] text-ink-50">
                 {projects[0].name}
               </div>
-              <div className="mt-0.5 text-xs text-ink-400">
+              <div className="meta mt-1.5 normal-case tracking-[0.12em]">
                 {projects[0].mode === 'grid'
-                  ? `Profile grid · 3×${projects[0].panelCount}`
+                  ? `grid 3×${projects[0].panelCount}`
                   : `${projects[0].panelCount} panels · ${projects[0].aspect}`}{' '}
                 · {timeAgo(projects[0].updatedAt)}
               </div>
@@ -248,9 +237,9 @@ export default function HomeScreen() {
             <div key={p.id} className="surface relative flex items-center rounded-2xl">
               <button className="min-w-0 flex-1 p-4 text-left" onClick={() => openProject(p)}>
                 <div className="truncate text-sm font-semibold text-ink-100">{p.name}</div>
-                <div className="mt-0.5 text-xs text-ink-500">
+                <div className="meta mt-1 normal-case tracking-[0.12em]">
                   {p.mode === 'grid'
-                    ? `Profile grid · 3×${p.panelCount}`
+                    ? `grid 3×${p.panelCount}`
                     : `${p.panelCount} panels · ${p.aspect}`}{' '}
                   · {timeAgo(p.updatedAt)}
                 </div>
@@ -388,30 +377,28 @@ function TitleSequenceOverlay({ progress }: { progress: MontageProgress }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-ink-950">
       <div className="film-grain" aria-hidden />
-      {/* faint beam from above */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-0 h-[70%] w-[130%] -translate-x-1/2 opacity-40"
-        style={{
-          background:
-            'radial-gradient(ellipse 45% 60% at 50% 0%, rgb(248 192 106 / 0.16), transparent 70%)',
-        }}
-      />
-      <div className="relative w-full max-w-sm px-10 text-center">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.4em] text-ink-500">
-          Making your montage
+      <div className="relative w-full max-w-sm px-10">
+        <div className="flex items-center justify-between">
+          <span className="meta">Making your montage</span>
+          <span className="flex items-center gap-2">
+            <span className="rec-dot" aria-hidden />
+            <span className="meta text-accent-400">Rec</span>
+          </span>
         </div>
-        <div ref={lineRef} className="mt-4 font-serif text-3xl font-bold italic leading-snug text-ink-50">
+        <div
+          ref={lineRef}
+          className="mt-5 font-display text-[2.1rem] font-bold leading-[1.05] tracking-[-0.03em] text-ink-50"
+        >
           {STAGE_LINE[progress.stage]}…
         </div>
-        <div className="mx-auto mt-8 h-px w-full overflow-hidden rounded-full bg-ink-800">
+        <div className="mt-9 h-px w-full overflow-hidden bg-ink-800">
           <div
-            className="h-full transition-[width] duration-500 ease-out"
-            style={{ width: `${Math.max(4, pct)}%`, backgroundImage: 'var(--beam)' }}
+            className="h-full bg-accent-500 transition-[width] duration-500 ease-out"
+            style={{ width: `${Math.max(4, pct)}%` }}
           />
         </div>
-        <div className="mt-3 text-xs tabular-nums text-ink-500">
-          {progress.total > 1 ? `${progress.done} of ${progress.total}` : `${pct}%`}
+        <div className="meta mt-3 tabular-nums normal-case tracking-[0.14em]">
+          {progress.total > 1 ? `${progress.done} / ${progress.total}` : `${pct}%`}
         </div>
       </div>
     </div>

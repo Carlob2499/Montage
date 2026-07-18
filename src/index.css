@@ -1,49 +1,46 @@
 @import 'tailwindcss';
 
 /* Dark-first, one identity: the .dark class is pinned on <html>, so every
-   dark: variant is always on. The app is a darkroom — the photos glow. */
+   dark: variant is always on. The chrome is an edit bay — colorimetrically
+   neutral graphite (like a D65 grading room) so the photos stay the only
+   color that matters. One accent: the record tally light. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas, monospace;
 
-  /* warm tungsten "ink" ramp — charcoal with amber undertones, not blue-black.
-     Same token names as before so every existing class re-skins itself. */
-  --color-ink-50: #f5f1ea;
-  --color-ink-100: #ece5da;
-  --color-ink-200: #d9d0c1;
-  --color-ink-300: #b5aa99;
-  --color-ink-400: #8d8272;
-  --color-ink-500: #6e6355;
-  --color-ink-600: #4e453b;
-  --color-ink-700: #362f27;
-  --color-ink-800: #221d17;
-  --color-ink-900: #171310;
-  --color-ink-950: #0e0c0a;
+  /* neutral graphite "ink" ramp — NO tint, pure grays. Same token names as
+     before so every existing class re-skins itself. */
+  --color-ink-50: #f5f5f5;
+  --color-ink-100: #ebebeb;
+  --color-ink-200: #d6d6d6;
+  --color-ink-300: #b3b3b3;
+  --color-ink-400: #8a8a8a;
+  --color-ink-500: #5c5c5c;
+  --color-ink-600: #3d3d3d;
+  --color-ink-700: #2a2a2a;
+  --color-ink-800: #1c1c1c;
+  --color-ink-900: #131313;
+  --color-ink-950: #0a0a0a;
 
-  /* accent — projector tungsten. Warm amber is the action color; the full
-     spectrum beam (amber→halation pink→violet) is reserved for hero moments. */
-  --color-accent-300: #ffd9a0;
-  --color-accent-400: #f8c06a;
-  --color-accent-500: #eda437;
-  --color-accent-600: #c97f1d;
-  --color-accent-700: #9c5f12;
+  /* accent — the record light. Signal vermilion, used only where something
+     is live: primary action, REC dot, playhead, active state. */
+  --color-accent-300: #ff9d90;
+  --color-accent-400: #f4574a;
+  --color-accent-500: #e03a2c;
+  --color-accent-600: #c02a1e;
+  --color-accent-700: #9c2118;
 
   --radius-xl: 0.875rem;
   --radius-2xl: 1.125rem;
 
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 16px -4px rgb(0 0 0 / 0.35);
   --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 16px 40px -8px rgb(0 0 0 / 0.55);
-  --shadow-accent: 0 6px 24px -6px rgb(237 164 55 / 0.45);
-}
-
-/* the projector beam — the one place the full spectrum is allowed */
-:root {
-  --beam: linear-gradient(105deg, #f8c06a, #f27a9d 46%, #8f6bff);
-  --beam-soft: linear-gradient(105deg, rgb(248 192 106 / 0.22), rgb(242 122 157 / 0.16) 46%, rgb(143 107 255 / 0.2));
+  --shadow-accent: 0 6px 24px -8px rgb(224 58 44 / 0.5);
 }
 
 @font-face {
@@ -107,13 +104,19 @@
   }
 }
 
-/* --- film grain: a whisper of texture over the whole room ----------------- */
+/* --- metadata: the NLE idiom — mono, uppercase, tracked ------------------- */
+@utility meta {
+  font-family: var(--font-mono);
+  @apply text-[10px] font-medium uppercase tracking-[0.22em] text-ink-500;
+}
+
+/* --- film grain: a whisper of texture, almost subliminal ------------------ */
 @utility film-grain {
   pointer-events: none;
   position: fixed;
   inset: 0;
   z-index: 60;
-  opacity: 0.05;
+  opacity: 0.035;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -128,9 +131,9 @@
   box-shadow: var(--shadow-soft);
 }
 
-/* faint warm hairline for section rules */
+/* faint hairline for section rules */
 @utility hairline {
-  @apply border-ink-700/50;
+  @apply border-ink-700/60;
 }
 
 /* --- buttons: 44px min touch target, clear hierarchy --------------------- */
@@ -141,10 +144,9 @@
     active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
 }
 
-/* primary = a tungsten bulb: warm amber, near-black text */
+/* primary = the record light: flat signal vermilion, white text */
 @utility btn-primary {
-  @apply btn text-ink-950 hover:brightness-110;
-  background-image: linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500));
+  @apply btn bg-accent-500 text-white hover:bg-accent-400;
   box-shadow: var(--shadow-accent);
 }
 
@@ -171,8 +173,7 @@
     bg-ink-800 text-ink-300;
 }
 @utility chip-active {
-  @apply chip text-ink-950;
-  background-image: linear-gradient(to bottom, var(--color-accent-300), var(--color-accent-500));
+  @apply chip bg-accent-500 text-white;
 }
 
 @utility input-base {
@@ -189,16 +190,16 @@
   box-shadow: var(--shadow-lift);
 }
 
-/* --- range slider: larger, warm thumb ------------------------------------ */
+/* --- range slider --------------------------------------------------------- */
 input[type='range'] {
   @apply h-2 w-full appearance-none rounded-full bg-ink-700 outline-none;
 }
 input[type='range']::-webkit-slider-thumb {
-  @apply h-6 w-6 appearance-none rounded-full bg-accent-400 border-2 border-ink-900;
+  @apply h-6 w-6 appearance-none rounded-full bg-ink-100 border-2 border-ink-900;
   box-shadow: var(--shadow-soft);
 }
 input[type='range']::-moz-range-thumb {
-  @apply h-6 w-6 rounded-full bg-accent-400 border-2 border-ink-900;
+  @apply h-6 w-6 rounded-full bg-ink-100 border-2 border-ink-900;
   box-shadow: var(--shadow-soft);
 }
 
@@ -209,45 +210,26 @@ input[type='range']::-moz-range-thumb {
   display: none;
 }
 
-/* --- ambient beam drift (hero backdrop) ---------------------------------- */
-@keyframes beam-drift {
-  0% {
-    transform: translate3d(-6%, -4%, 0) rotate(-2deg) scale(1.05);
+/* --- the REC pulse: the one thing allowed to glow ------------------------- */
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
   }
   50% {
-    transform: translate3d(5%, 3%, 0) rotate(2deg) scale(1.12);
-  }
-  100% {
-    transform: translate3d(-6%, -4%, 0) rotate(-2deg) scale(1.05);
+    opacity: 0.25;
   }
 }
-.beam-drift {
-  animation: beam-drift 14s ease-in-out infinite;
-  will-change: transform;
-}
-
-/* slow sheen sweep across the hero button */
-@keyframes sheen-sweep {
-  0%, 72% {
-    transform: translateX(-130%) skewX(-18deg);
-  }
-  100% {
-    transform: translateX(230%) skewX(-18deg);
-  }
-}
-.sheen::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 42%;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.14), transparent);
-  animation: sheen-sweep 5.5s ease-in-out infinite;
-  pointer-events: none;
+.rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-accent-500);
+  animation: rec-pulse 1.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .beam-drift,
-  .sheen::after {
+  .rec-dot {
     animation: none;
   }
   *,
