@@ -137,6 +137,17 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   smoke strings on Home/Welcome: "Auto Montage", "Try a demo trip", "New project",
   "Photo Library", "Get started", "Keep it as an app".
 
+## Direct manipulation
+
+- **In-cell reframe** (`PhotoNode` + `src/lib/reframe.ts`, pure + tested): two fingers on a
+  SELECTED photo pinch-zoom (`imgScale`) and pan (`imgOffsetX/Y`) the image WITHIN its cell —
+  framing a shot no longer means hunting for the Layers-sheet sliders. Gated on selection so a
+  pinch on an unselected photo / empty canvas still zooms the whole canvas (`CanvasStage`
+  pinch); the node handler sets `e.cancelBubble` to win over the stage. Routed through
+  `updateLayers(..., {transient:true})` + `commitPreview()` on gesture end (one gesture → one
+  undo step, invariant #3). Dragging is suppressed during the gesture (`stopDrag` +
+  `draggable(false)`, restored on end) so the layer doesn't also move.
+
 ## Recurring JS/React gotchas hit in this codebase
 
 - `FileList` is LIVE: materialize `Array.from(input.files)` BEFORE `input.value = ''`.
@@ -238,4 +249,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 270 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 280 tests.

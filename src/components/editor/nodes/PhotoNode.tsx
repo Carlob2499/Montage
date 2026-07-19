@@ -10,6 +10,7 @@ import { useProjectStore } from '../../../state/projectStore';
 import { useUIStore } from '../../../state/uiStore';
 import { useBlobImage, useBlobVideo } from '../../../hooks/useBlobUrl';
 import { coverCrop } from '../../../lib/imageUtils';
+import { reframeTransform } from '../../../lib/reframe';
 import { applyAdjustments, isNeutral, normalizeAdjustments } from '../../../lib/editStack';
 import type { Layer, PhotoLayer } from '../../../types';
 
@@ -31,6 +32,14 @@ function PhotoNode({
 }) {
   const groupRef = useRef<Konva.Group>(null);
   const imageRef = useRef<Konva.Image>(null);
+  // active two-finger reframe gesture (pinch-zoom / pan the photo in its cell)
+  const reframe = useRef<{
+    startDist: number;
+    startMid: { x: number; y: number };
+    baseScale: number;
+    baseOffX: number;
+    baseOffY: number;
+  } | null>(null);
   const record = useLiveQuery(
     () => (layer.photoId ? db.photos.get(layer.photoId) : undefined),
     [layer.photoId],
@@ -187,6 +196,64 @@ function PhotoNode({
     }
   };
 
+  // --- direct in-cell reframe -------------------------------------------------
+  // Two fingers on a SELECTED photo zoom (pinch) and pan (drag) the image WITHIN
+  // its cell — imgScale / imgOffset — so framing a shot no longer means hunting
+  // for the Layers-sheet sliders. A pinch on an unselected photo (or empty
+  // canvas) still zooms the whole canvas, so this doesn't hijack navigation.
+  const touchGeom = (t: TouchList) => {
+    const a = t[0];
+    const b = t[1];
+    return {
+      dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1,
+      mid: { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 },
+    };
+  };
+
+  const onReframeMove = (e: KonvaEventObject<TouchEvent>) => {
+    const touches = e.evt.touches;
+    if (touches.length !== 2 || layer.locked || !layer.photoId) return;
+    if (!useProjectStore.getState().selectedIds.includes(layer.id)) return; // → stage pinch
+    e.evt.preventDefault();
+    e.cancelBubble = true; // take precedence over the canvas pinch-zoom
+    const node = groupRef.current;
+    const { dist, mid } = touchGeom(touches);
+    if (!reframe.current) {
+      node?.stopDrag();
+      node?.draggable(false);
+      reframe.current = {
+        startDist: dist,
+        startMid: mid,
+        baseScale: layer.imgScale,
+        baseOffX: layer.imgOffsetX,
+        baseOffY: layer.imgOffsetY,
+      };
+      return;
+    }
+    const g = reframe.current;
+    const absScale = node?.getAbsoluteScale().x || 1;
+    const next = reframeTransform(
+      { scale: g.baseScale, offX: g.baseOffX, offY: g.baseOffY },
+      { dist: g.startDist, midX: g.startMid.x, midY: g.startMid.y },
+      { dist, midX: mid.x, midY: mid.y },
+      content.width,
+      content.height,
+      absScale,
+    );
+    useProjectStore.getState().updateLayers(
+      [layer.id],
+      (l) => ({ ...(l as PhotoLayer), ...next }),
+      { transient: true },
+    );
+  };
+
+  const onReframeEnd = () => {
+    if (!reframe.current) return;
+    reframe.current = null;
+    groupRef.current?.draggable(!layer.locked);
+    useProjectStore.getState().commitPreview(); // one gesture → one undo step
+  };
+
   const onTransformEnd = () => {
     const node = groupRef.current;
     if (!node) return;
@@ -237,10 +304,19 @@ function PhotoNode({
       rotation={layer.rotation}
       opacity={layer.opacity}
       draggable={!layer.locked}
-      onDragMove={(e) => onDragMove(e, layer)}
+      onDragMove={(e) => {
+        // a two-finger reframe must never also drag the layer
+        if (reframe.current) {
+          groupRef.current?.stopDrag();
+          return;
+        }
+        onDragMove(e, layer);
+      }}
       onDragEnd={(e) => onDragEnd(e, layer)}
       onMouseDown={selectMe}
       onTouchStart={selectMe}
+      onTouchMove={onReframeMove}
+      onTouchEnd={onReframeEnd}
       onDblClick={openContent}
       onDblTap={openContent}
       onTransformEnd={onTransformEnd}

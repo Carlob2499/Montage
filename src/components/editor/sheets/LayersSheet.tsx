@@ -103,6 +103,9 @@ function PhotoControls({ layer }: { layer: PhotoLayer }) {
           </button>
         ))}
       </div>
+      <p className="text-[11px] text-ink-400">
+        Tip: pinch the photo on the canvas to zoom &amp; drag to reframe it in place.
+      </p>
       <Slider
         label="Zoom in frame"
         min={1}
