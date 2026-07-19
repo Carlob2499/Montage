@@ -8,7 +8,7 @@ import { renderGridTile, renderPanel } from '../../lib/renderer';
 import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
 import { curateAlbum } from '../../lib/curation/select';
 import { storyOrder } from '../../lib/curation/storyOrder';
-import type { VibeLabel } from '../../types';
+import type { ProjectDoc, VibeLabel } from '../../types';
 import { buildReelDoc, REEL_DURATIONS, DEFAULT_REEL_DURATION } from '../../lib/reel/buildReel';
 import { exportReelVideo, reelExportSupported } from '../../lib/reel/reelExport';
 import { decodeAudioFile } from '../../lib/audio/synth';
@@ -115,13 +115,21 @@ export default function PreviewScreen() {
     };
   }, [recipe?.docId]);
 
+  // Rebuilding the montage (vibe / shuffle / photo-count) REUSES the current doc
+  // id so Home shows ONE evolving project — minting a fresh id each time orphaned
+  // a new "… — montage" row on every tap. createdAt is preserved for stable order.
+  const persistInPlace = (built: ProjectDoc): ProjectDoc => {
+    const next = { ...built, id: recipe?.docId ?? built.id, createdAt: doc?.createdAt ?? built.createdAt };
+    void db.projects.put(next);
+    useProjectStore.getState().loadProject(next);
+    return next;
+  };
+
   // apply a vibe directly (chip) — re-themes both the reel and the carousel
   const applyVibe = (vibe: VibeLabel) => {
     if (!recipe || vibe === recipe.vibe) return;
     const seed = (recipe.album.id.length * 2654435761 + recipe.shuffles * 40503) >>> 0;
-    const next = buildAutoMontageDoc(recipe.album, recipe.picks, vibe, uid, { seed });
-    void db.projects.put(next);
-    useProjectStore.getState().loadProject(next);
+    const next = persistInPlace(buildAutoMontageDoc(recipe.album, recipe.picks, vibe, uid, { seed }));
     useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, vibe });
   };
 
@@ -158,9 +166,7 @@ export default function PreviewScreen() {
     const { picks } = curateAlbum(recipe.scored, { targetCount, vibe: recipe.vibe });
     const chosen = storyOrder(picks);
     const seed = (recipe.album.id.length * 2654435761 + recipe.shuffles * 40503) >>> 0;
-    const next = buildAutoMontageDoc(recipe.album, chosen, recipe.vibe, uid, { seed });
-    void db.projects.put(next);
-    useProjectStore.getState().loadProject(next);
+    const next = persistInPlace(buildAutoMontageDoc(recipe.album, chosen, recipe.vibe, uid, { seed }));
     useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, picks: chosen });
     setExcluded([]);
   };
@@ -172,9 +178,7 @@ export default function PreviewScreen() {
     const n = recipe.shuffles + 1;
     const vibe = VIBE_CYCLE[n % VIBE_CYCLE.length];
     const seed = (recipe.album.id.length * 2654435761 + n * 40503) >>> 0;
-    const next = buildAutoMontageDoc(recipe.album, recipe.picks, vibe, uid, { seed });
-    void db.projects.put(next);
-    useProjectStore.getState().loadProject(next);
+    const next = persistInPlace(buildAutoMontageDoc(recipe.album, recipe.picks, vibe, uid, { seed }));
     useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, vibe, shuffles: n });
   };
 

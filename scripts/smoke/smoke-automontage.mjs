@@ -84,10 +84,35 @@ if (!(usedCount > 12)) {
   console.log(`✓ montage uses ${usedCount} photos (past the old 12-cap)`);
 }
 
-// Shuffle regenerates it
+// Shuffle regenerates it — a few times to prove it doesn't orphan project docs
 await page.click('button:has-text("Shuffle")');
-await page.waitForTimeout(1500);
-console.log('✓ shuffle regenerated the montage');
+await page.waitForTimeout(900);
+await page.click('button:has-text("Shuffle")');
+await page.waitForTimeout(900);
+await page.click('button:has-text("Shuffle")');
+await page.waitForTimeout(1200);
+console.log('✓ shuffle regenerated the montage (×3)');
+
+// re-curating and shuffling must REUSE the one project doc, not spawn a new
+// "— montage" row on Home each time
+const projectCount = await page.evaluate(
+  () =>
+    new Promise((resolve) => {
+      const req = indexedDB.open('montage-studio');
+      req.onsuccess = () => {
+        const tx = req.result.transaction(['projects'], 'readonly');
+        const all = tx.objectStore('projects').getAll();
+        all.onsuccess = () => resolve(all.result.length);
+        all.onerror = () => resolve(-1);
+      };
+      req.onerror = () => resolve(-1);
+    }),
+);
+if (projectCount !== 1) {
+  errors.push(`shuffle/re-curate orphaned project docs: expected 1, found ${projectCount}`);
+} else {
+  console.log('✓ shuffle + re-curate reuse ONE project doc (no orphans)');
+}
 
 // switch to the carousel format and export the seamless-panel ZIP
 await page.click('button:has-text("carousel")');

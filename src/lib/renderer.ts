@@ -510,14 +510,49 @@ function textFont(layer: TextLayer): string {
   return `${layer.fontWeight} ${layer.fontSize}px ${layer.fontFamily}`;
 }
 
+type MeasureLike = { measureText(t: string): TextMetrics };
+
 /** Width of one line including letter spacing (Konva adds spacing per glyph). */
 function measureLine(
-  ctx: { measureText(t: string): TextMetrics },
+  ctx: MeasureLike,
   line: string,
   letterSpacing: number,
 ): number {
   const base = ctx.measureText(line).width;
   return base + Math.max(0, line.length - 1) * letterSpacing;
+}
+
+/**
+ * Word-wrap `text` to `maxWidth`, matching Konva's Text `wrap='word'` (the
+ * editor default): break on spaces, keep an over-wide single word on its own
+ * line (overflow rather than char-split), preserve explicit newlines and blank
+ * lines. Without this the export drew each newline-delimited line full width —
+ * so a wrapped cover title in the editor overflowed (and could cross a seam) in
+ * the exported panel. `ctx` must already have the layer's font set.
+ */
+export function wrapWords(ctx: MeasureLike, text: string, maxWidth: number, letterSpacing: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    const words = para.split(' ');
+    let line = '';
+    for (const word of words) {
+      const candidate = line === '' ? word : `${line} ${word}`;
+      if (line === '' || measureLine(ctx, candidate, letterSpacing) <= maxWidth) {
+        line = candidate;
+      } else {
+        out.push(line);
+        line = word;
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+/** The display lines for a text layer: wrapped to layer.width when set + measurable. */
+function textLines(ctx: MeasureLike | null, layer: TextLayer): string[] {
+  if (layer.width && ctx) return wrapWords(ctx, layer.text, layer.width, layer.letterSpacing);
+  return layer.text.split('\n');
 }
 
 /**
@@ -527,10 +562,15 @@ function measureLine(
  * an estimate when no canvas is available (node tests).
  */
 export function measureTextLayer(layer: TextLayer): { width: number; height: number } {
+  const ctx = getMeasureCtx();
+  if (layer.width) {
+    // fixed width → Konva wraps; height grows with the WRAPPED line count
+    if (ctx) ctx.font = textFont(layer);
+    const lines = textLines(ctx, layer);
+    return { width: layer.width, height: layer.fontSize * layer.lineHeight * lines.length };
+  }
   const lines = layer.text.split('\n');
   const height = layer.fontSize * layer.lineHeight * lines.length;
-  if (layer.width) return { width: layer.width, height };
-  const ctx = getMeasureCtx();
   if (!ctx) {
     const longest = Math.max(...lines.map((l) => l.length), 1);
     return { width: layer.fontSize * longest * 0.6, height };
@@ -549,7 +589,9 @@ function paintTextLayer(ctx: Ctx, layer: TextLayer): void {
   ctx.fillStyle = layer.fill;
   ctx.font = textFont(layer);
   ctx.textBaseline = 'top';
-  const lines = layer.text.split('\n');
+  // wrap to layer.width (Konva's default) so a long line doesn't overflow the
+  // box — and never bleeds across a panel seam — in the exported panel
+  const lines = textLines(ctx, layer);
   const lineH = layer.fontSize * layer.lineHeight;
   // Konva auto-sizes width-less text to its widest line and still aligns
   // shorter lines inside that box — mirror it so export matches the editor.
