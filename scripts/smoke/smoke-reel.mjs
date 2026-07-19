@@ -107,6 +107,7 @@ const verdict = await page.evaluate(
     if (!ok) return { loaded: false };
     const w = v.videoWidth;
     const h = v.videoHeight;
+    const duration = v.duration;
     // MediaRecorder output isn't decoded at currentTime=0 — play briefly so a
     // real frame is on screen, then sample brightness to prove it isn't black
     let advanced = false;
@@ -132,7 +133,7 @@ const verdict = await page.evaluate(
     const audioBytes = v.webkitAudioDecodedByteCount ?? 0;
     const audioTracks = v.audioTracks ? v.audioTracks.length : (v.mozHasAudio ? 1 : 0);
     URL.revokeObjectURL(url);
-    return { loaded: true, w, h, meanLum, advanced, audioBytes, audioTracks };
+    return { loaded: true, w, h, duration, meanLum, advanced, audioBytes, audioTracks };
   },
   { b64, mime },
 );
@@ -142,6 +143,15 @@ else {
   console.log(`✓ reel loads: ${verdict.w}×${verdict.h}, meanLum=${verdict.meanLum.toFixed(1)}, plays=${verdict.advanced}`);
   if (verdict.w !== 1080 || verdict.h !== 1920) errors.push(`expected 1080×1920, got ${verdict.w}×${verdict.h}`);
   if (verdict.meanLum < 4) errors.push('exported reel first frame is essentially black');
+  // Instagram-postability: the MP4 must carry FINITE duration metadata. Old
+  // MediaRecorder output reported Infinity (no container duration) which some
+  // uploaders reject; the WebCodecs MP4 path fixes this.
+  if (Number.isFinite(verdict.duration) && verdict.duration > 1) {
+    console.log(`✓ MP4 has finite duration metadata (${verdict.duration.toFixed(1)}s) — social-media ready`);
+  } else {
+    errors.push(`MP4 duration not finite (${verdict.duration}) — WebCodecs path may not have run`);
+  }
+  if (name.endsWith('.mp4') !== true) errors.push(`expected an .mp4 for social export, got ${name}`);
   const hasAudio = verdict.audioBytes > 0 || verdict.audioTracks > 0;
   console.log(`✓ soundtrack: audioBytes=${verdict.audioBytes}, tracks=${verdict.audioTracks}, present=${hasAudio}`);
   if (!hasAudio) errors.push('exported reel has no audio track (procedural bed not muxed)');

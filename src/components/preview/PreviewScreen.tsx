@@ -3,6 +3,7 @@ import { useProjectStore } from '../../state/projectStore';
 import { useUIStore } from '../../state/uiStore';
 import { useMontageStore } from '../../state/montageStore';
 import { bundleZip, downloadBlob, exportPanels, loadResources, releaseResources, slug } from '../../lib/exporter';
+import { shareSupported, canShareFiles, shareFiles, toShareFiles } from '../../lib/share';
 import { renderGridTile, renderPanel } from '../../lib/renderer';
 import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
 import { curateAlbum } from '../../lib/curation/select';
@@ -53,6 +54,11 @@ export default function PreviewScreen() {
   const [excluded, setExcluded] = useState<string[]>([]);
   const [countDraft, setCountDraft] = useState<number | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  // when the OS share sheet is available, an export stashes its file(s) here and
+  // the button flips to "Share" — navigator.share must fire in its OWN gesture
+  // (the multi-second encode can't hold the original tap's activation alive)
+  const [pendingShare, setPendingShare] = useState<{ files: File[]; label: string } | null>(null);
+  const canShare = shareSupported();
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,6 +84,12 @@ export default function PreviewScreen() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe?.docId, recipe?.vibe, recipe?.shuffles, reelSec, track, titleOverride, reelPicks]);
+
+  // a stashed share is only valid for the exact content that produced it — drop
+  // it whenever the reel content, the format, or the project changes
+  useEffect(() => {
+    setPendingShare(null);
+  }, [reelDoc, showReel, doc?.id]);
 
   // slide-strip thumbnails for every pick (cheap 320px thumbs), loaded once
   useEffect(() => {
@@ -166,6 +178,39 @@ export default function PreviewScreen() {
     useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, vibe, shuffles: n });
   };
 
+  // Deliver an export: on a share-capable device stash the file(s) and flip the
+  // button to "Share" (post straight to Instagram/Stories/Photos); otherwise
+  // download. ZIP fallback is only used for a multi-file carousel download.
+  const deliver = (files: File[], label: string, zipFallback?: { blob: Blob; name: string }) => {
+    if (canShare && canShareFiles(files)) {
+      setPendingShare({ files, label });
+      toast(`${label} ready — tap Share to post`, 'success');
+    } else if (zipFallback) {
+      downloadBlob(zipFallback.blob, zipFallback.name);
+      toast(`${label} saved ✓`, 'success');
+    } else {
+      for (const f of files) downloadBlob(f, f.name);
+      toast(`${label} saved ✓`, 'success');
+    }
+  };
+
+  const doShare = async () => {
+    if (!pendingShare) return;
+    try {
+      const ok = await shareFiles(pendingShare.files, pendingShare.label);
+      if (ok) {
+        toast('Shared ✓', 'success');
+        setPendingShare(null);
+      }
+    } catch (err) {
+      console.error(err);
+      // sharing failed (not a cancel) — fall back to a plain download
+      for (const f of pendingShare.files) downloadBlob(f, f.name);
+      toast('Saved to your device instead', 'success');
+      setPendingShare(null);
+    }
+  };
+
   const exportReel = async () => {
     if (!reelDoc) return;
     setExporting(true);
@@ -176,8 +221,7 @@ export default function PreviewScreen() {
         muted,
         audioBuffer: track?.buffer ?? null,
       });
-      downloadBlob(blob, name);
-      toast('Reel saved ✓', 'success');
+      deliver([new File([blob], name, { type: blob.type || 'video/mp4' })], 'Reel');
     } catch (err) {
       console.error(err);
       toast(err instanceof Error ? err.message : 'Reel export failed', 'error');
@@ -193,8 +237,7 @@ export default function PreviewScreen() {
     try {
       const files = await exportPanels(doc, { format: 'image/jpeg', quality: 0.92 });
       const zip = await bundleZip(doc, files);
-      downloadBlob(zip, `${slug(doc.name)}.zip`);
-      toast(`Saved ${files.length} panels ✓`, 'success');
+      deliver(toShareFiles(files), 'Carousel', { blob: zip, name: `${slug(doc.name)}.zip` });
     } catch (err) {
       console.error(err);
       toast(err instanceof Error ? err.message : 'Export failed', 'error');
@@ -535,20 +578,30 @@ export default function PreviewScreen() {
             >
               <Icon name="sliders" size={18} /> Edit
             </button>
-            <button
-              className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl bg-accent-500 py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-70"
-              disabled={exporting}
-              onClick={() => void (showReel ? exportReel() : exportCarousel())}
-            >
-              <Icon name="download" size={18} />
-              {exporting
-                ? reelProgress !== null
-                  ? `${Math.round(reelProgress * 100)}%`
-                  : 'Saving…'
-                : showReel
-                  ? 'Export reel'
-                  : 'Export'}
-            </button>
+            {pendingShare ? (
+              <button
+                className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl bg-accent-500 py-3 text-sm font-bold text-white active:scale-[0.97]"
+                onClick={() => void doShare()}
+              >
+                <Icon name="share" size={18} />
+                Share {pendingShare.label}
+              </button>
+            ) : (
+              <button
+                className="flex flex-[1.3] items-center justify-center gap-2 rounded-xl bg-accent-500 py-3 text-sm font-bold text-white active:scale-[0.97] disabled:opacity-70"
+                disabled={exporting}
+                onClick={() => void (showReel ? exportReel() : exportCarousel())}
+              >
+                <Icon name={canShare ? 'share' : 'download'} size={18} />
+                {exporting
+                  ? reelProgress !== null
+                    ? `${Math.round(reelProgress * 100)}%`
+                    : 'Saving…'
+                  : showReel
+                    ? 'Export reel'
+                    : 'Export'}
+              </button>
+            )}
           </div>
         </div>
       )}

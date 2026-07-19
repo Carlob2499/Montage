@@ -9,6 +9,7 @@ import type { ProjectDoc } from '../types';
 import { canvasSize } from './slicer';
 import { loadResources, releaseResources, slug } from './exporter';
 import { renderRegion } from './renderer';
+import { encodeCanvasToMp4, webcodecsAvailable } from './video/mp4';
 
 export interface VideoExportOptions {
   /** scroll duration, excluding the hold at each end */
@@ -75,8 +76,9 @@ export async function exportPanoramaVideo(
   opts: VideoExportOptions,
 ): Promise<{ name: string; blob: Blob }> {
   if (doc.mode !== 'carousel') throw new Error('Panorama video needs a carousel project');
-  const mimeType = pickMimeType();
-  if (!mimeType) throw new Error('This browser cannot record canvas video');
+  if (!webcodecsAvailable() && !pickMimeType()) {
+    throw new Error('This browser cannot record canvas video');
+  }
 
   const fps = opts.fps ?? 30;
   const { width: W, height: H } = canvasSize(doc);
@@ -94,30 +96,16 @@ export async function exportPanoramaVideo(
     releaseResources(resources);
   }
 
-  const canvas = document.createElement('canvas');
-  canvas.width = pw;
-  canvas.height = outH;
-  const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingQuality = 'high';
-
-  const stream = canvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, {
-    mimeType,
-    videoBitsPerSecond: 8_000_000,
-  });
-  const chunks: Blob[] = [];
-  recorder.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-
   const totalSec = opts.durationSec + 2 * HOLD_SEC;
   const travel = Math.max(0, W - pw);
 
-  const drawAt = (x: number, progress: number) => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const win = opts.kenBurns
-      ? kenBurnsWindow(x, progress, H, pw)
-      : { sx: x, sy: 0, sw: pw, sh: H };
+  // draw the pan/Ken-Burns frame at absolute time tMs onto the given context
+  const drawAt = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, tMs: number) => {
+    const elapsed = tMs / 1000;
+    const t = Math.min(1, Math.max(0, (elapsed - HOLD_SEC) / opts.durationSec));
+    const x = smoothstep(t) * travel;
+    ctx.clearRect(0, 0, pw, outH);
+    const win = opts.kenBurns ? kenBurnsWindow(x, t, H, pw) : { sx: x, sy: 0, sw: pw, sh: H };
     ctx.drawImage(
       strip,
       win.sx * stripScale,
@@ -131,12 +119,42 @@ export async function exportPanoramaVideo(
     );
   };
 
+  // --- preferred path: frame-exact MP4 via WebCodecs -----------------------
+  if (webcodecsAvailable()) {
+    const blob = await encodeCanvasToMp4({
+      width: pw,
+      height: outH,
+      fps,
+      durationMs: totalSec * 1000,
+      draw: drawAt,
+      videoBitrate: 10_000_000,
+      onProgress: opts.onProgress,
+    });
+    if (blob) return { name: `${slug(doc.name)}-panorama.mp4`, blob };
+  }
+
+  // --- fallback: real-time MediaRecorder capture ---------------------------
+  const mimeType = pickMimeType();
+  if (!mimeType) throw new Error('This browser cannot record canvas video');
+  const canvas = document.createElement('canvas');
+  canvas.width = pw;
+  canvas.height = outH;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+
+  const stream = canvas.captureStream(fps);
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+
   const done = new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
     recorder.onerror = () => reject(new Error('Video recording failed'));
   });
 
-  drawAt(0, 0);
+  drawAt(ctx, 0);
   recorder.start(250);
   const start = performance.now();
 
@@ -144,12 +162,11 @@ export async function exportPanoramaVideo(
     const tick = () => {
       const elapsed = (performance.now() - start) / 1000;
       if (elapsed >= totalSec) {
-        drawAt(travel, 1);
+        drawAt(ctx, totalSec * 1000);
         resolve();
         return;
       }
-      const t = Math.min(1, Math.max(0, (elapsed - HOLD_SEC) / opts.durationSec));
-      drawAt(smoothstep(t) * travel, t);
+      drawAt(ctx, elapsed * 1000);
       opts.onProgress?.(elapsed / totalSec);
       requestAnimationFrame(tick);
     };

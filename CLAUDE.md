@@ -194,10 +194,23 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   tap "Try a demo trip" on Home — 6 vibey landscape scenes are synthesized on the fly (canvas
   → JPEG Files, no bundled assets) and run through the real Auto Montage → reel flow. The
   onboarding promise, tested by `smoke-demo`.
-- **Reel export is real-time capture** and that has proven fine for 15–60s reels, so the
-  WebCodecs fast-encode path stays a documented future optimization (not needed yet). The
-  reel decodes photos from proxies for preview and originals for export, releasing bitmaps in
-  a `finally` — keep that so a 60s reel doesn't retain a fleet of full-res bitmaps.
+- **Video export is frame-exact H.264 MP4 via WebCodecs** (`src/lib/video/mp4.ts`,
+  `encodeCanvasToMp4`) — the reel (`reelExport.ts`) and panorama video (`videoExport.ts`) draw
+  every frame into a WebCodecs `VideoEncoder` + `mp4-muxer` (AAC audio via `AudioEncoder`),
+  so output is smooth (no real-time-capture judder), deterministic, faster-than-real-time, and
+  ALWAYS an MP4 with finite duration metadata — the one format Instagram/TikTok/iOS-Photos
+  accept. `encodeCanvasToMp4` returns null when WebCodecs (or H.264/AAC) is unavailable and the
+  caller falls back to real-time `MediaRecorder` (which may emit WebM). `mp4-muxer` is pure JS
+  (no wasm/network). The `draw(ctx, tMs)` callback is the SAME code both paths + the in-app
+  player call, preserving parity. The reel decodes photos from proxies for preview and originals
+  for export, releasing bitmaps in a `finally` — keep that so a 60s reel doesn't retain a fleet
+  of full-res bitmaps.
+- **Preview export routes through the OS share sheet** (`PreviewScreen` `deliver()`): on a
+  share-capable device (`shareSupported`) an export stashes the file(s) and flips the button to
+  **Share** — `navigator.share` MUST fire in its OWN gesture (the multi-second encode can't hold
+  the original tap's activation), so it's a deliberate two-tap. Desktop/no-share falls back to a
+  download (ZIP for a multi-file carousel). Reels share the MP4; carousels share the panel
+  images (not the ZIP) so Instagram treats them as a multi-photo post.
 - **One-tap Auto Montage** (`createMontageFromFiles` in `src/lib/curation/autoMontageFlow.ts`)
   is the flagship zero-edit path: a Home hero takes a photo dump → new album → import → score
   → `curateAlbum` → `buildAutoMontageDoc` → lands in **Preview** (not the editor) with
@@ -218,4 +231,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 264 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 268 tests.
