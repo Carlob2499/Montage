@@ -7,7 +7,8 @@ import exifr from 'exifr';
 import { db, uid } from './db';
 import type { PhotoRecord } from '../types';
 import {
-  decodeImage,
+  decodeImageBounded,
+  importResizeWidth,
   isHeic,
   makeCanvas,
   makeScaledImage,
@@ -16,6 +17,39 @@ import {
   THUMB_SIZE,
 } from '../lib/imageUtils';
 import { findDuplicates } from '../lib/photoSort';
+
+/**
+ * Run `fn` over items with at most `limit` in flight at once. Keeps large
+ * imports fast (decode of one photo overlaps the canvas work of another)
+ * without unbounded memory — the enemy that made whole-album imports OOM.
+ */
+export async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, worker));
+  return results;
+}
+
+/** in-flight decode/encode jobs; bounded decode makes this cheap, but HEIC
+ *  conversions are heavy so we stay conservative. Devices report memory when
+ *  they can — halve the pool on low-memory phones. */
+function importConcurrency(): number {
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  if (typeof mem === 'number' && mem > 0 && mem <= 4) return 2;
+  return 4;
+}
 
 export interface ImportResult {
   imported: PhotoRecord[];
@@ -52,10 +86,22 @@ async function extractExif(file: File): Promise<{
   dateTaken?: number;
   orientation?: number;
   gps?: { lat: number; lng: number };
+  /** stored pixel dims (pre-orientation) — lets us decode bounded without a
+   *  full-res decode first */
+  imageWidth?: number;
+  imageHeight?: number;
 }> {
   try {
     const data = await exifr.parse(file, {
-      pick: ['DateTimeOriginal', 'CreateDate', 'Orientation', 'latitude', 'longitude'],
+      pick: [
+        'DateTimeOriginal',
+        'CreateDate',
+        'Orientation',
+        'latitude',
+        'longitude',
+        'ExifImageWidth',
+        'ExifImageHeight',
+      ],
     });
     if (!data) return {};
     const date: Date | undefined = data.DateTimeOriginal ?? data.CreateDate;
@@ -66,6 +112,8 @@ async function extractExif(file: File): Promise<{
         typeof data.latitude === 'number' && typeof data.longitude === 'number'
           ? { lat: data.latitude, lng: data.longitude }
           : undefined,
+      imageWidth: typeof data.ExifImageWidth === 'number' ? data.ExifImageWidth : undefined,
+      imageHeight: typeof data.ExifImageHeight === 'number' ? data.ExifImageHeight : undefined,
     };
   } catch {
     return {};
@@ -155,10 +203,13 @@ export async function importFiles(
   const imported: PhotoRecord[] = [];
   const errors: { fileName: string; message: string }[] = [];
   const existing = await db.photos.where('albumId').equals(albumId).toArray();
-  let order = existing.reduce((m, p) => Math.max(m, p.order), 0) + 1;
+  const orderBase = existing.reduce((m, p) => Math.max(m, p.order), 0) + 1;
   let done = 0;
 
-  for (const file of files) {
+  // One photo's full import: EXIF → bounded decode → thumb+proxy → DB write.
+  // `order` is derived from the file's index (not a shared counter) so parallel
+  // workers never race on it.
+  const processOne = async (file: File, index: number): Promise<void> => {
     const kind = classifyFile(file) ?? (isHeic(file) ? 'image' : null);
     if (kind === null) {
       errors.push({
@@ -166,7 +217,7 @@ export async function importFiles(
         message: 'Unsupported format — photos (JPEG/PNG/WebP/HEIC) and clips (MP4/MOV/WebM) work.',
       });
       onProgress?.(++done, files.length);
-      continue;
+      return;
     }
     try {
       const id = uid();
@@ -189,9 +240,12 @@ export async function importFiles(
         duration = poster.duration;
       } else {
         storedBlob = await normalizeImageBlob(file);
-        const bitmap = await decodeImage(storedBlob, exif.orientation);
-        width = bitmap.width;
-        height = bitmap.height;
+        // decode DOWNSCALED to the proxy size — never allocate the full-res
+        // bitmap just to shrink it (the OOM/jank cause on big-album imports)
+        const resizeW = importResizeWidth(exif.imageWidth, exif.imageHeight, PROXY_SIZE);
+        const bitmap = await decodeImageBounded(storedBlob, resizeW, exif.orientation);
+        const decodedW = bitmap.width;
+        const decodedH = bitmap.height;
         // PNG/WebP may carry transparency — JPEG proxies would turn it black
         const hasAlpha = /png|webp/i.test(storedBlob.type || file.type);
         const [thumb, proxy] = await Promise.all([
@@ -201,6 +255,16 @@ export async function importFiles(
         thumbBlob = thumb.blob;
         proxyBlob = proxy.blob;
         bitmap.close();
+        // store the TRUE full-res dimensions (the bounded bitmap is smaller):
+        // prefer EXIF's stored dims, orientation-swapped for 90°/270° rotations
+        if (exif.imageWidth && exif.imageHeight) {
+          const swap = !!exif.orientation && exif.orientation >= 5 && exif.orientation <= 8;
+          width = swap ? exif.imageHeight : exif.imageWidth;
+          height = swap ? exif.imageWidth : exif.imageHeight;
+        } else {
+          width = decodedW;
+          height = decodedH;
+        }
       }
 
       const record: PhotoRecord = {
@@ -216,7 +280,7 @@ export async function importFiles(
         orientation: exif.orientation,
         gps: exif.gps,
         tags: [],
-        order: order++,
+        order: orderBase + index,
         kind: isVideo ? 'video' : 'image',
         duration,
       };
@@ -239,7 +303,11 @@ export async function importFiles(
       });
     }
     onProgress?.(++done, files.length);
-  }
+  };
+
+  await mapPool(files, importConcurrency(), processOne);
+  // preserve the picker's order even though workers finish out of order
+  imported.sort((a, b) => a.order - b.order);
 
   // re-run duplicate detection across the album — never let this housekeeping
   // step turn a successful import into a silent failure

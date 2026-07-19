@@ -82,8 +82,16 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   allocate full-canvas-width bitmaps (that's why photo content renders in sub-rects).
 - `ctx.filter` (blur) unsupported until Safari 18; `ctx.letterSpacing` until 17.4 —
   both have manual fallbacks in the renderer (downscale-blur; per-glyph drawing).
-- Decode originals with `createImageBitmap` resize (`neededDecodeScale`) — full-res
-  decoding of 20 photos OOMs iPhones.
+- Decode originals with `createImageBitmap` resize (`neededDecodeScale` for export;
+  `decodeImageBounded`+`importResizeWidth` for import) — full-res decoding of 20 photos OOMs
+  iPhones. **Import decodes DOWNSCALED to the proxy size** (never allocates a 48MP bitmap to
+  make a thumbnail); the record's `width`/`height` come from EXIF `ExifImageWidth/Height`
+  (orientation-swapped) since the bounded bitmap is smaller than the true source. The
+  original blob is stored untouched, so export still has full resolution.
+- Import runs a bounded-concurrency pool (`mapPool`, 4 wide — 2 on `deviceMemory ≤ 4`), with
+  `order` derived from the file index (not a shared counter) so parallel workers never race.
+  Desktop gets a `webkitdirectory` "Folder" button (whole-album import); mobile uses the
+  multi-select picker (iOS Safari has no directory picker).
 - Multiple programmatic `<a download>` clicks get dropped on mobile → ZIP is the reliable
   multi-file path; separate downloads are staggered 400ms.
 - Video elements need `playsInline`, `preload='auto'`, and every await bounded by a
@@ -201,4 +209,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 252 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 261 tests.

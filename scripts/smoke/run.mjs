@@ -7,6 +7,7 @@ const stop = await ensurePreview();
 let failed = false;
 for (const suite of [
   'smoke-ui.mjs',
+  'smoke-import.mjs',
   'smoke-pipeline.mjs',
   'smoke-dialogs.mjs',
   'smoke-motion.mjs',

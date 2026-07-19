@@ -108,6 +108,49 @@ export async function decodeImage(blob: Blob, exifOrientation?: number): Promise
 }
 
 /**
+ * The `resizeWidth` to pass createImageBitmap for a bounded-memory import
+ * decode: shrink so the long edge is `maxEdge`, or null when the source is
+ * already small enough / its dimensions are unknown (caller full-decodes).
+ * Pure — `rawW`/`rawH` are the source's stored pixel dims (pre-orientation).
+ */
+export function importResizeWidth(
+  rawW: number | undefined,
+  rawH: number | undefined,
+  maxEdge: number,
+): number | null {
+  if (!rawW || !rawH || rawW <= 0 || rawH <= 0) return null;
+  const long = Math.max(rawW, rawH);
+  if (long <= maxEdge) return null;
+  return Math.max(1, Math.round(rawW * (maxEdge / long)));
+}
+
+/**
+ * Decode a blob to an ImageBitmap, downscaled AT DECODE to `resizeWidth` so a
+ * 48MP phone photo never allocates a ~190MB full-resolution bitmap just to make
+ * a thumbnail + proxy — this is what keeps large imports off the OOM cliff on
+ * iOS. `resizeWidth == null` (or unsupported by the browser) falls back to a
+ * full, EXIF-oriented decode.
+ */
+export async function decodeImageBounded(
+  blob: Blob,
+  resizeWidth: number | null,
+  exifOrientation?: number,
+): Promise<ImageBitmap> {
+  if (resizeWidth && resizeWidth > 0) {
+    try {
+      return await createImageBitmap(blob, {
+        imageOrientation: 'from-image',
+        resizeWidth,
+        resizeQuality: 'high',
+      });
+    } catch {
+      /* resize options unsupported (older Safari) — fall back to a full decode */
+    }
+  }
+  return decodeImage(blob, exifOrientation);
+}
+
+/**
  * Downscale to fit within `max` px on the long edge. Alpha-capable sources
  * (PNG/WebP) are re-encoded as PNG so transparency survives — JPEG encoding a
  * transparent canvas turns those pixels black.

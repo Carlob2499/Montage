@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, deleteAlbum, deletePhotos, mergeAlbums, storageBreakdown, uid } from '../../db/db';
-import { importFiles } from '../../db/importPhotos';
+import { importFiles, isSupportedFile } from '../../db/importPhotos';
 import { useUIStore } from '../../state/uiStore';
 import { promptText, confirmAction } from '../../state/dialogStore';
 import { useProjectStore } from '../../state/projectStore';
@@ -48,6 +48,11 @@ export default function LibraryScreen() {
   const [filterMonth, setFilterMonth] = useState('');
   const [showMap, setShowMap] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
+  // folder import (whole albums at once) is desktop-only — iOS Safari has no
+  // webkitdirectory; the multi-select picker is the mobile album path
+  const canPickFolder =
+    typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches;
 
   const albums = useLiveQuery(() => db.albums.orderBy('createdAt').toArray(), []);
   // most recent imports across all albums — shown while picking for the canvas
@@ -512,6 +517,17 @@ export default function LibraryScreen() {
                   ? 'Importing…'
                   : '+ Import photos & videos'}
             </button>
+            {canPickFolder && (
+              <button
+                className="btn-soft"
+                disabled={busy}
+                title="Import a whole folder"
+                onClick={() => folderRef.current?.click()}
+              >
+                <Icon name="grid" size={18} />
+                Folder
+              </button>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -527,6 +543,25 @@ export default function LibraryScreen() {
                 if (files.length) void onFiles(files);
               }}
             />
+            {canPickFolder && (
+              <input
+                ref={folderRef}
+                type="file"
+                multiple
+                // @ts-expect-error non-standard but widely supported on desktop
+                webkitdirectory=""
+                directory=""
+                className="hidden"
+                onChange={(e) => {
+                  // a folder yields everything recursively — keep only media
+                  const all = Array.from(e.target.files ?? []);
+                  e.target.value = '';
+                  const media = all.filter(isSupportedFile);
+                  if (media.length) void onFiles(media);
+                  else if (all.length) toast('No photos or videos found in that folder', 'error');
+                }}
+              />
+            )}
           </div>
         )}
       </div>
