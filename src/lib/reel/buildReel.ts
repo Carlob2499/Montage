@@ -108,13 +108,22 @@ export function buildReelDoc(
     maxMs: MAX_SLIDE_MS * 1.25,
   });
 
-  const slides: ReelSlide[] = chosen.map((p, i) => ({
-    photoId: p.id,
-    durationMs: durations[i] ?? perSlideMs,
-    motion: seededMotion(seed, i),
-    transition: REEL_TRANSITIONS[(seed + i) % REEL_TRANSITIONS.length],
-    focal: p.scores?.focal,
-  }));
+  const slides: ReelSlide[] = chosen.map((p, i) => {
+    const isVideo = p.kind === 'video';
+    return {
+      photoId: p.id,
+      durationMs: durations[i] ?? perSlideMs,
+      // video clips already move — a gentle Ken Burns push fights the footage,
+      // so hold a still frame (zoom 1, no pan) and let the clip do the motion
+      motion: isVideo
+        ? { fromZoom: 1, toZoom: 1, fromX: 0, toX: 0, fromY: 0, toY: 0 }
+        : seededMotion(seed, i),
+      transition: REEL_TRANSITIONS[(seed + i) % REEL_TRANSITIONS.length],
+      focal: p.scores?.focal,
+      kind: isVideo ? ('video' as const) : ('photo' as const),
+      clipDurationMs: isVideo && p.duration ? Math.round(p.duration * 1000) : undefined,
+    };
+  });
 
   // when the pick set is empty (shouldn't happen — caller guards), still return
   // a valid, playable reel (cover → outro).

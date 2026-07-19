@@ -15,6 +15,7 @@ for (const suite of [
   'smoke-library.mjs',
   'smoke-automontage.mjs',
   'smoke-reel.mjs',
+  'smoke-reel-video.mjs',
   'smoke-demo.mjs',
 ]) {
   console.log(`\n=== ${suite} ===`);

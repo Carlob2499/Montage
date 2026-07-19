@@ -24,6 +24,11 @@ import type { ReelDoc, ReelSegment } from './reelDoc';
 export interface ReelResources {
   /** photoId → decoded bitmap (poster/proxy for preview, original for export) */
   images: Map<string, ImageBitmap>;
+  /** photoId → live <video> element for a video slide; when ready its CURRENT
+   *  frame is drawn instead of the poster (same cover-fit), so player + export
+   *  agree by construction. The player advances it via playback; the exporter
+   *  seeks it per frame. */
+  videos?: Map<string, HTMLVideoElement>;
 }
 
 type Ctx2D = CanvasRenderingContext2D;
@@ -231,16 +236,45 @@ function drawOutro(ctx: Ctx2D, doc: ReelDoc, localT: number): void {
   ctx.restore();
 }
 
+/** a video element with a decodable current frame */
+function videoReady(el: HTMLVideoElement | undefined): el is HTMLVideoElement {
+  return !!el && el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0;
+}
+
 function drawSlide(ctx: Ctx2D, doc: ReelDoc, slideIndex: number, localT: number, res: ReelResources): void {
   const { width: w, height: h } = doc;
   const slide = doc.slides[slideIndex];
-  const img = slide ? res.images.get(slide.photoId) : undefined;
-  if (!img) {
-    // photo not loaded — fall back to the theme background so a frame still reads
+  if (!slide) {
     paintBackground(ctx, doc.background, w, h);
     return;
   }
   const m = slideMotionAt(slide.motion, localT);
+  // video slide: draw the clip's CURRENT frame (full-bleed cover-fit) — the
+  // player advances it live, the exporter seeks it per frame. Falls back to the
+  // poster still if the clip isn't ready.
+  if (slide.kind === 'video') {
+    const vid = res.videos?.get(slide.photoId);
+    if (videoReady(vid)) {
+      const { sx, sy, sw, sh } = coverCrop(
+        vid.videoWidth,
+        vid.videoHeight,
+        w,
+        h,
+        m.zoom,
+        m.offX,
+        m.offY,
+        slide.focal,
+      );
+      ctx.drawImage(vid, sx, sy, sw, sh, 0, 0, w, h);
+      return;
+    }
+  }
+  const img = res.images.get(slide.photoId);
+  if (!img) {
+    // nothing loaded — fall back to the theme background so a frame still reads
+    paintBackground(ctx, doc.background, w, h);
+    return;
+  }
   drawPhotoCover(ctx, img, w, h, m.zoom, m.offX, m.offY, slide.focal);
 }
 

@@ -64,7 +64,14 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
    player (`ReelPlayer.tsx`, rAF loop) and the exporter (`reelExport.ts`, `captureStream` +
    MediaRecorder, real-time) — a player/export divergence is a bug. Ken Burns feeds the SAME
    `coverCrop` the stills use (motion is expressed in zoom/pan space); motion is seeded per
-   slide index so it's deterministic and Shuffle varies it. Reel docs still go through
+   slide index so it's deterministic and Shuffle varies it. **Video clips play in the reel**:
+   a `ReelSlide.kind==='video'` (set by `buildReelDoc` from a video `PhotoRecord`, carrying
+   `clipDurationMs`) draws the actual moving clip full-bleed instead of a Ken Burns still — the
+   player advances a live `<video>` (`ReelResources.videos`), the exporter SEEKS it per frame
+   (`seekReelForFrame`) so the frame-exact encode stays smooth. Video slides hold a still Ken
+   Burns (zoom 1, no pan) so the push doesn't fight the footage; clip audio is a deliberate
+   non-goal (the music bed wins). Falls back to the poster if a clip won't decode. Reel docs
+   still go through
    `normalizeReelDoc` (invariant #4). Codec is feature-detected (`pickMimeType`: MP4 on
    Safari, WebM elsewhere). MediaRecorder output has no container duration — `video.duration`
    is Infinity and `currentTime=0` decodes black; sample a frame only AFTER `play()`.
@@ -231,4 +238,4 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 268 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 270 tests.

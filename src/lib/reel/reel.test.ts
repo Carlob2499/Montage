@@ -198,4 +198,39 @@ describe('normalizeReelDoc', () => {
     expect(() => normalizeReelDoc({})).not.toThrow();
     expect(() => normalizeReelDoc({ slides: 'x' })).not.toThrow();
   });
+
+  it('coerces video-slide fields (kind + clipDurationMs), defaults to photo', () => {
+    const norm = normalizeReelDoc({
+      slides: [
+        { photoId: 'v', kind: 'video', clipDurationMs: 4000 },
+        { photoId: 'p' }, // no kind → photo
+        { photoId: 'w', kind: 'video' }, // video with no clip length
+        { photoId: 'x', kind: 'video', clipDurationMs: -3 }, // bad length dropped
+      ],
+    });
+    expect(norm.slides[0].kind).toBe('video');
+    expect(norm.slides[0].clipDurationMs).toBe(4000);
+    expect(norm.slides[1].kind).toBe('photo');
+    expect(norm.slides[1].clipDurationMs).toBeUndefined();
+    expect(norm.slides[2].kind).toBe('video');
+    expect(norm.slides[2].clipDurationMs).toBeUndefined();
+    expect(norm.slides[3].clipDurationMs).toBeUndefined();
+  });
+});
+
+describe('buildReelDoc — video clips', () => {
+  it('marks video picks as video slides with clip length and holds Ken Burns still', () => {
+    const picks = [
+      photo({ id: 'clip', kind: 'video', duration: 3.5 }),
+      photo({ id: 'still', kind: 'image' }),
+    ];
+    const doc = buildReelDoc(album, picks, 'vibrant', makeId, { durationSec: 30, seed: 3 });
+    const vid = doc.slides.find((s) => s.photoId === 'clip');
+    const still = doc.slides.find((s) => s.photoId === 'still');
+    expect(vid?.kind).toBe('video');
+    expect(vid?.clipDurationMs).toBe(3500);
+    // a video slide holds a still frame (no zoom/pan) so it doesn't fight the footage
+    expect(vid?.motion).toEqual({ fromZoom: 1, toZoom: 1, fromX: 0, toX: 0, fromY: 0, toY: 0 });
+    expect(still?.kind).toBe('photo');
+  });
 });

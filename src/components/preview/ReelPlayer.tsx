@@ -24,6 +24,8 @@ export default function ReelPlayer({
   const resRef = useRef<ReelResources | null>(null);
   const bedRef = useRef<AudioBuffer | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // the video element currently being played (a video slide is on screen)
+  const curVidRef = useRef<HTMLVideoElement | null>(null);
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(true);
   // absolute playhead in ms, driven by rAF; kept in a ref to avoid re-renders
@@ -74,13 +76,41 @@ export default function ReelPlayer({
         tRef.current += dt;
         if (tRef.current >= doc.durationMs) tRef.current = 0; // loop
       }
+      // drive live clip playback so a video slide MOVES (matches the export):
+      // play the active clip, pause any other, reset on segment change
+      const { index, seg } = segmentAt(segs, tRef.current);
+      if (res.videos && res.videos.size) {
+        const slide = seg.kind === 'slide' ? doc.slides[seg.slideIndex] : undefined;
+        const active = slide?.kind === 'video' ? res.videos.get(slide.photoId) : undefined;
+        if (curVidRef.current && curVidRef.current !== active) {
+          curVidRef.current.pause();
+          curVidRef.current = null;
+        }
+        if (active) {
+          if (curVidRef.current !== active) {
+            try {
+              active.currentTime = 0;
+            } catch {
+              /* not seekable yet */
+            }
+            curVidRef.current = active;
+          }
+          if (playing && active.paused) void active.play().catch(() => {});
+          else if (!playing && !active.paused) active.pause();
+        }
+      }
       drawReelFrame(ctx, doc, tRef.current, res);
-      const { index } = segmentAt(segs, tRef.current);
       setSegIndex((prev) => (prev === index ? prev : index));
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (curVidRef.current) {
+        curVidRef.current.pause();
+        curVidRef.current = null;
+      }
+    };
     // segs is derived from doc; playing/ready gate the loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, playing, doc]);

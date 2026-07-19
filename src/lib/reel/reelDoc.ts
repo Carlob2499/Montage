@@ -35,6 +35,13 @@ export interface ReelSlide {
   transition: ReelTransition;
   /** normalized subject position (0..1) — Ken Burns anchors on it (R3) */
   focal?: { x: number; y: number };
+  /** 'video' plays the actual clip during this segment; 'photo' (default) is a
+   *  Ken Burns still. A video slide falls back to its poster if the clip can't
+   *  decode. */
+  kind?: 'photo' | 'video';
+  /** source clip length (ms) — the segment plays the clip from 0, trimmed/held
+   *  to the (beat-aligned) slide duration. Only meaningful for video slides. */
+  clipDurationMs?: number;
 }
 
 export interface ReelDoc {
@@ -213,12 +220,18 @@ export function normalizeReelDoc(input: unknown): ReelDoc {
         o.focal && typeof o.focal.x === 'number' && typeof o.focal.y === 'number'
           ? { x: clamp(o.focal.x, 0, 1), y: clamp(o.focal.y, 0, 1) }
           : undefined;
+      const kind = o.kind === 'video' ? 'video' : 'photo';
       return {
         photoId: o.photoId,
         durationMs: clamp(num(o.durationMs, 2100), 300, 12_000),
         motion: normMotion(o.motion),
         transition,
         focal,
+        kind,
+        clipDurationMs:
+          kind === 'video' && typeof o.clipDurationMs === 'number' && o.clipDurationMs > 0
+            ? o.clipDurationMs
+            : undefined,
       };
     })
     .filter((s): s is ReelSlide => s !== null);
