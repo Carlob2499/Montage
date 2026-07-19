@@ -49,10 +49,15 @@ export default function LibraryScreen() {
   const [showMap, setShowMap] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
-  // folder import (whole albums at once) is desktop-only — iOS Safari has no
-  // webkitdirectory; the multi-select picker is the mobile album path
-  const canPickFolder =
-    typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches;
+  // feature-detect webkitdirectory — present on Android Chrome and all desktops,
+  // absent on iOS Safari (which has no directory picker API at all). The old
+  // pointer:fine check incorrectly excluded Android touch devices that DO support it.
+  const canPickFolder = (() => {
+    if (typeof window === 'undefined') return false;
+    const el = document.createElement('input');
+    el.type = 'file';
+    return 'webkitdirectory' in el;
+  })();
 
   const albums = useLiveQuery(() => db.albums.orderBy('createdAt').toArray(), []);
   // most recent imports across all albums — shown while picking for the canvas
@@ -453,8 +458,13 @@ export default function LibraryScreen() {
           </div>
         )}
         {album && shown.length === 0 && !busy && (
-          <div className="mt-8 text-center text-sm text-ink-400">
-            No photos here yet — import some below.
+          <div className="mt-8 text-center text-sm text-ink-400 px-6">
+            <p>No photos here yet — tap <strong>+ Import photos &amp; videos</strong> below.</p>
+            {!canPickFolder && (
+              <p className="mt-2 text-xs text-ink-500">
+                Tip: to import a whole album on mobile, open the picker → navigate to an album → long-press a photo to enter select mode, then <em>Select All</em>.
+              </p>
+            )}
           </div>
         )}
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6">
