@@ -206,14 +206,14 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
   `recipe.docId === doc.id` gates the montage UI so a stale recipe never leaks onto another
   project. Export from Preview is a direct panels→ZIP save (no editor round-trip).
 - **Curation scales with the album — never silently clamp a big dump.** `curateAlbum`'s
-  DEFAULT pick count is `min(30, round(reps*0.65))` (floor 6), NOT a hard 12 — clamping a
-  40-photo dump to 12 reads as "the app ate my photos." The recipe retains the FULL `scored`
-  pool (metadata only, no pixels), so the Preview's **"Photos in this montage"** slider
-  (`PreviewScreen`) re-curates to any count from 3 up to the whole pool with no re-import —
-  committed on pointer-up (never per-tick, invariant #3). An explicit `targetCount` overrides
-  the 30 default cap up to the deduped pool size. Dedup/quality-floor still cull genuine
-  near-dupes/blurry shots (a feature): the slider `max` is the retained pool, so it's the
-  honest ceiling even when dedup trims the picks below it.
+  DEFAULT pick count is a GENEROUS `min(40, round(reps*0.8))` (floor 6), NOT a hard 12 —
+  clamping a 40-photo dump to 12 reads as "the app ate my photos." The recipe retains the
+  FULL `scored` pool (metadata only, no pixels), so the Preview's **"Photos in this montage"**
+  slider (`PreviewScreen`) re-curates to any count from 3 up to the whole pool with no
+  re-import — committed on pointer-up (never per-tick, invariant #3). An explicit `targetCount`
+  overrides the 40 default cap up to the deduped pool size. Dedup/quality-floor still cull
+  genuine near-dupes/blurry shots (a feature): the slider `max` is the retained pool, so it's
+  the honest ceiling even when dedup trims the picks below it.
 
 ## Testing expectations
 

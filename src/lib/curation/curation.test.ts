@@ -220,8 +220,9 @@ describe('curateAlbum', () => {
     // large dump isn't silently eaten
     const many = Array.from({ length: 40 }, (_, i) => photo(`p${i}`, { dateTaken: i * 86_400_000 }));
     const res = curateAlbum(many);
-    expect(res.picks.length).toBeGreaterThan(20);
-    expect(res.picks.length).toBeLessThanOrEqual(30); // default cap
+    // ~80% of 40 unique shots kept by default — a generous, non-clamping default
+    expect(res.picks.length).toBeGreaterThan(24);
+    expect(res.picks.length).toBeLessThanOrEqual(40); // default cap
   });
 
   it('honors an explicit targetCount beyond the default cap (up to the pool)', () => {
