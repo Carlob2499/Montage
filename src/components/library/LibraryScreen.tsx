@@ -49,6 +49,7 @@ export default function LibraryScreen() {
   const [showMap, setShowMap] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
+  const cloudRef = useRef<HTMLInputElement>(null);
   // feature-detect webkitdirectory — present on Android Chrome and all desktops,
   // absent on iOS Safari (which has no directory picker API at all). The old
   // pointer:fine check incorrectly excluded Android touch devices that DO support it.
@@ -458,11 +459,21 @@ export default function LibraryScreen() {
           </div>
         )}
         {album && shown.length === 0 && !busy && (
-          <div className="mt-8 text-center text-sm text-ink-400 px-6">
-            <p>No photos here yet — tap <strong>+ Import photos &amp; videos</strong> below.</p>
+          <div className="mt-8 text-center text-sm text-ink-400 px-6 space-y-2">
+            <p>No photos here yet.</p>
+            <p className="text-xs text-ink-500">
+              <strong>+ Import</strong> opens your Camera Roll / Photos app.
+              &ensp;<strong>☁</strong> opens your Files app — pick from{' '}
+              <span className="text-ink-400">Google Drive, OneDrive, iCloud Drive, Dropbox</span>, or any cloud
+              storage you have installed.
+              {canPickFolder && (
+                <> &ensp;The <strong>grid</strong> button imports a whole local folder at once.</>
+              )}
+            </p>
             {!canPickFolder && (
-              <p className="mt-2 text-xs text-ink-500">
-                Tip: to import a whole album on mobile, open the picker → navigate to an album → long-press a photo to enter select mode, then <em>Select All</em>.
+              <p className="text-xs text-ink-500">
+                To import a full album: open <strong>+ Import</strong> → navigate to an album →
+                long-press to enter select mode → <em>Select All</em>.
               </p>
             )}
           </div>
@@ -527,30 +538,57 @@ export default function LibraryScreen() {
                   ? 'Importing…'
                   : '+ Import photos & videos'}
             </button>
+            {/* Cloud / Files picker: opens the iOS Files app (Google Drive, OneDrive,
+                iCloud Drive, Dropbox, etc.) and the Android document provider.
+                No accept restriction so the OS shows all file providers; we filter
+                by isSupportedFile on our side. */}
+            <button
+              className="btn-soft"
+              disabled={busy}
+              title="Import from Google Drive, OneDrive, iCloud, Dropbox, or any Files location"
+              onClick={() => cloudRef.current?.click()}
+            >
+              ☁
+            </button>
             {canPickFolder && (
               <button
                 className="btn-soft"
                 disabled={busy}
-                title="Import a whole folder"
+                title="Import a whole local folder"
                 onClick={() => folderRef.current?.click()}
               >
                 <Icon name="grid" size={18} />
-                Folder
               </button>
             )}
+            {/* Photos / Camera picker — image+video accept triggers native album picker
+                on iOS; desktop gets the standard file browser */}
             <input
               ref={fileRef}
               type="file"
               multiple
-              // wildcard accept: anything narrower makes iOS gray out videos
-              // (it records .mov/QuickTime) and some album photos in the picker
+              // anything narrower grays out .mov and some Photos-app media on iOS
               accept="image/*,video/*"
               className="hidden"
               onChange={(e) => {
-                // materialize before clearing — FileList is live and empties on reset
                 const files = Array.from(e.target.files ?? []);
                 e.target.value = '';
                 if (files.length) void onFiles(files);
+              }}
+            />
+            {/* Cloud / Files picker — no accept so iOS opens Files app (all providers)
+                and Android opens the document picker (Drive, OneDrive, etc.) */}
+            <input
+              ref={cloudRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const all = Array.from(e.target.files ?? []);
+                e.target.value = '';
+                const media = all.filter(isSupportedFile);
+                if (media.length) void onFiles(media);
+                else if (all.length)
+                  toast('No supported photos or videos in the selected files', 'error');
               }}
             />
             {canPickFolder && (
@@ -558,12 +596,11 @@ export default function LibraryScreen() {
                 ref={folderRef}
                 type="file"
                 multiple
-                // @ts-expect-error non-standard but widely supported on desktop
+                // @ts-expect-error non-standard but widely supported on desktop/Android
                 webkitdirectory=""
                 directory=""
                 className="hidden"
                 onChange={(e) => {
-                  // a folder yields everything recursively — keep only media
                   const all = Array.from(e.target.files ?? []);
                   e.target.value = '';
                   const media = all.filter(isSupportedFile);
