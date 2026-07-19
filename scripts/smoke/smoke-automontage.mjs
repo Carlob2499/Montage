@@ -1,9 +1,13 @@
-// Auto Montage smoke: the flagship one-tap flow. From Home, drop a few photos
-// into "Auto Montage" → the pipeline (import → score → curate → stitch) runs
-// and lands on a finished, swipeable montage in Preview. Then Shuffle and
-// Export. No native dialog may fire.
+// Auto Montage smoke: the flagship one-tap flow. From Home, drop a LARGE photo
+// dump into "Auto Montage" → the pipeline (import → score → curate → stitch)
+// runs and lands on a finished, swipeable montage in Preview. Proves a big dump
+// isn't silently clamped: the "Photos in this montage" control must expose the
+// whole imported pool, not a hard-capped 12. Then Shuffle and Export. No native
+// dialog may fire.
 import { statSync } from 'node:fs';
 import { BASE, launchPage, reportAndExit } from './browser.mjs';
+
+const DUMP = 16; // more than the old hard cap of 12
 
 const { browser, page, errors } = await launchPage();
 page.on('dialog', (d) => {
@@ -13,18 +17,72 @@ page.on('dialog', (d) => {
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
 
-// tap the Auto Montage hero and feed it a photo dump
+// tap the Auto Montage hero and feed it a big, visually-distinct photo dump
 await page.waitForSelector('text=Auto Montage', { timeout: 10000 });
-await page.setInputFiles('input[accept="image/*,video/*"]', [
-  'public/icons/icon-512.png',
-  'public/icons/icon-192.png',
-  'public/icons/icon-180.png',
-]);
-console.log('✓ dropped 3 photos into Auto Montage');
+await page.evaluate(async (count) => {
+  const files = [];
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('canvas');
+    c.width = 800;
+    c.height = 1000;
+    const g = c.getContext('2d');
+    // a distinct 4×4 light/dark quadrant pattern per photo (driven by the bits of
+    // a mixed seed) gives each image well-separated LOW-FREQUENCY luminance
+    // structure → distinct perceptual hashes, so dedup doesn't collapse them
+    const seed = (i * 2654435761) >>> 0;
+    for (let gy = 0; gy < 4; gy++) {
+      for (let gx = 0; gx < 4; gx++) {
+        const bit = (seed >> (gy * 4 + gx)) & 1;
+        g.fillStyle = bit ? `hsl(${i * 23}, 60%, 78%)` : `hsl(${i * 23}, 55%, 18%)`;
+        g.fillRect(gx * 200, gy * 250, 200, 250);
+      }
+    }
+    g.fillStyle = '#fff';
+    g.font = 'bold 220px sans-serif';
+    g.fillText(String(i), 300, 560);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
+    files.push(new File([blob], `dump-${i}.jpg`, { type: 'image/jpeg' }));
+  }
+  const dt = new DataTransfer();
+  for (const f of files) dt.items.add(f);
+  const input = document.querySelector('input[accept="image/*,video/*"]');
+  input.files = dt.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}, DUMP);
+console.log(`✓ dropped ${DUMP} photos into Auto Montage`);
 
 // pipeline runs, then lands in the montage preview (reel by default)
-await page.waitForSelector('text=your auto montage', { timeout: 40000 });
+await page.waitForSelector('text=your auto montage', { timeout: 60000 });
 console.log('✓ curated montage opened in Preview (zero editing)');
+
+// the photo-count control must expose the WHOLE imported pool — not a capped 12.
+// (slider max = the retained scored pool, independent of dedup)
+await page.waitForSelector('text=Photos in this montage', { timeout: 8000 });
+const sliderMax = Number(
+  await page.getAttribute('input[aria-label="Number of photos in the montage"]', 'max'),
+);
+if (!(sliderMax >= DUMP - 1)) {
+  errors.push(`photo-count control capped the pool: max=${sliderMax}, expected ≥ ${DUMP - 1}`);
+} else {
+  console.log(`✓ photo-count control exposes the full pool (up to ${sliderMax})`);
+}
+
+// drag it to the max and confirm the montage actually grows past the old 12-cap
+await page.$eval('input[aria-label="Number of photos in the montage"]', (el) => {
+  el.value = el.max;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+});
+await page.waitForTimeout(2000);
+const usedCount = Number(
+  await page.getAttribute('input[aria-label="Number of photos in the montage"]', 'value'),
+);
+if (!(usedCount > 12)) {
+  errors.push(`montage still capped: only ${usedCount} photos used after maxing the control`);
+} else {
+  console.log(`✓ montage uses ${usedCount} photos (past the old 12-cap)`);
+}
 
 // Shuffle regenerates it
 await page.click('button:has-text("Shuffle")');

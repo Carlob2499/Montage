@@ -213,4 +213,22 @@ describe('curateAlbum', () => {
     const res = curateAlbum([bare], { targetCount: 3 });
     expect(res.picks).toHaveLength(1);
   });
+
+  it('scales the default pick count with the album (does not clamp big dumps to 12)', () => {
+    // 40 distinct shots (helper gives well-separated phashes), no targetCount
+    // override → the default must keep far more than the old hard cap of 12 so a
+    // large dump isn't silently eaten
+    const many = Array.from({ length: 40 }, (_, i) => photo(`p${i}`, { dateTaken: i * 86_400_000 }));
+    const res = curateAlbum(many);
+    expect(res.picks.length).toBeGreaterThan(20);
+    expect(res.picks.length).toBeLessThanOrEqual(30); // default cap
+  });
+
+  it('honors an explicit targetCount beyond the default cap (up to the pool)', () => {
+    const many = Array.from({ length: 50 }, (_, i) => photo(`p${i}`, { dateTaken: i * 86_400_000 }));
+    // ask for all 50 — the explicit request overrides the 30 default cap
+    expect(curateAlbum(many, { targetCount: 50 }).picks).toHaveLength(50);
+    // asking for more than exist just returns the whole de-duplicated pool
+    expect(curateAlbum(many, { targetCount: 999 }).picks.length).toBeLessThanOrEqual(50);
+  });
 });

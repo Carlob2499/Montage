@@ -121,11 +121,18 @@ export function curateAlbum(photos: PhotoRecord[], opts: CurationOptions = {}): 
   const { reps, dupes } = dedupe(sorted, dedupThreshold);
   for (const id of dupes) rejected.push({ id, reason: 'duplicate' });
 
-  // default to a tight, punchy best-of: a montage of 6–12 strong frames reads
-  // far better than dumping half the roll (callers can override targetCount).
-  const targetCount = Math.max(
-    1,
-    opts.targetCount ?? Math.min(12, Math.max(6, Math.round(reps.length * 0.5))),
+  // How many to pick. A curated best-of reads better than the whole roll, but
+  // the default must SCALE with the album — clamping a 40-photo dump to 12 makes
+  // the app feel like it silently ate most of your photos. So: keep ~65% of the
+  // de-duplicated shots, floor 6, cap 30 by default. Callers (and the Preview
+  // "photos" control) can override targetCount to go all the way to every shot.
+  const DEFAULT_MAX_PICKS = 30;
+  const requested = opts.targetCount ?? Math.min(DEFAULT_MAX_PICKS, Math.round(reps.length * 0.65));
+  // an explicit targetCount is honored up to the available pool; the default is
+  // floored at 6 so tiny albums still make a montage
+  const targetCount = Math.min(
+    reps.length,
+    Math.max(opts.targetCount != null ? 1 : 6, requested),
   );
   const vibe = opts.vibe ?? dominantVibe(reps);
 

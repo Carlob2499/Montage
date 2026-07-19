@@ -56,6 +56,7 @@ export default function HomeScreen() {
         docId: res.doc.id,
         album: res.album,
         picks: res.picks,
+        scored: res.scored,
         vibe: res.vibe,
         shuffles: 0,
       });

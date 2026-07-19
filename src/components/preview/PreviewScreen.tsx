@@ -5,6 +5,8 @@ import { useMontageStore } from '../../state/montageStore';
 import { bundleZip, downloadBlob, exportPanels, loadResources, releaseResources, slug } from '../../lib/exporter';
 import { renderGridTile, renderPanel } from '../../lib/renderer';
 import { buildAutoMontageDoc, VIBE_CYCLE } from '../../lib/curation/autoMontage';
+import { curateAlbum } from '../../lib/curation/select';
+import { storyOrder } from '../../lib/curation/storyOrder';
 import type { VibeLabel } from '../../types';
 import { buildReelDoc, REEL_DURATIONS, DEFAULT_REEL_DURATION } from '../../lib/reel/buildReel';
 import { exportReelVideo, reelExportSupported } from '../../lib/reel/reelExport';
@@ -49,6 +51,7 @@ export default function PreviewScreen() {
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [excluded, setExcluded] = useState<string[]>([]);
+  const [countDraft, setCountDraft] = useState<number | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -129,6 +132,25 @@ export default function PreviewScreen() {
     } catch {
       toast('Could not read that audio', 'error');
     }
+  };
+
+  // re-curate the montage to a different number of photos, pulled from the FULL
+  // scored pool the recipe retained — so the user can dial in "more of my roll"
+  // (or fewer) without re-importing. Keeps the current vibe; committed on the
+  // slider's pointer-up so we don't rebuild the doc on every tick.
+  const maxPhotos = recipe ? Math.max(3, recipe.scored.length) : 3;
+  const shownCount = countDraft ?? (recipe ? recipe.picks.length : 0);
+  const recurate = (targetCount: number) => {
+    setCountDraft(null);
+    if (!recipe || targetCount === recipe.picks.length) return;
+    const { picks } = curateAlbum(recipe.scored, { targetCount, vibe: recipe.vibe });
+    const chosen = storyOrder(picks);
+    const seed = (recipe.album.id.length * 2654435761 + recipe.shuffles * 40503) >>> 0;
+    const next = buildAutoMontageDoc(recipe.album, chosen, recipe.vibe, uid, { seed });
+    void db.projects.put(next);
+    useProjectStore.getState().loadProject(next);
+    useMontageStore.getState().setRecipe({ ...recipe, docId: next.id, picks: chosen });
+    setExcluded([]);
   };
 
   // regenerate the montage from the same best-shot picks with a fresh
@@ -472,6 +494,31 @@ export default function PreviewScreen() {
             <p className="mb-2 text-center text-[11px] text-white/40">
               9:16 — ready for Reels, Stories &amp; TikTok
             </p>
+          )}
+          {/* photo-count control — dial the montage from 3 shots up to the whole
+              imported pool, re-curated on release (applies to reel + carousel) */}
+          {recipe && maxPhotos > 3 && (
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-white/60">
+                <span>Photos in this montage</span>
+                <span className="tabular-nums text-white/90">
+                  {shownCount} of {maxPhotos}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={3}
+                max={maxPhotos}
+                value={shownCount}
+                step={1}
+                className="w-full accent-accent-500 disabled:opacity-50"
+                disabled={exporting}
+                aria-label="Number of photos in the montage"
+                onChange={(e) => setCountDraft(Number(e.target.value))}
+                onPointerUp={(e) => recurate(Number((e.target as HTMLInputElement).value))}
+                onKeyUp={(e) => recurate(Number((e.target as HTMLInputElement).value))}
+              />
+            </div>
           )}
           <div className="flex items-center gap-2">
             <button

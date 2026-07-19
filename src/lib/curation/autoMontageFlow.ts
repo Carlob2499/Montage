@@ -23,6 +23,8 @@ export interface MontageResult {
   doc: ProjectDoc;
   album: AlbumRecord;
   picks: PhotoRecord[];
+  /** the full scored pool — kept so the Preview can re-curate to a bigger set */
+  scored: PhotoRecord[];
   vibe: VibeLabel;
 }
 
@@ -72,5 +74,5 @@ export async function createMontageFromFiles(
   await db.projects.put(doc);
   onProgress?.({ stage: 'stitching', done: 1, total: 1 });
 
-  return { doc, album, picks: chosen, vibe };
+  return { doc, album, picks: chosen, scored, vibe };
 }

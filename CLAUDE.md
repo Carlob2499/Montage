@@ -201,12 +201,21 @@ calls; deploys to GitHub Pages at `/Montage/` via `.github/workflows/deploy.yml`
 - **One-tap Auto Montage** (`createMontageFromFiles` in `src/lib/curation/autoMontageFlow.ts`)
   is the flagship zero-edit path: a Home hero takes a photo dump → new album → import → score
   → `curateAlbum` → `buildAutoMontageDoc` → lands in **Preview** (not the editor) with
-  Shuffle/Edit/Export. `montageStore` holds the recipe (album+picks+vibe+docId) so Shuffle
-  rebuilds from the SAME best-shot picks with a new seed/vibe (no re-import/re-score);
+  Shuffle/Edit/Export. `montageStore` holds the recipe (album+picks+**scored**+vibe+docId) so
+  Shuffle rebuilds from the SAME best-shot picks with a new seed/vibe (no re-import/re-score);
   `recipe.docId === doc.id` gates the montage UI so a stale recipe never leaks onto another
   project. Export from Preview is a direct panels→ZIP save (no editor round-trip).
+- **Curation scales with the album — never silently clamp a big dump.** `curateAlbum`'s
+  DEFAULT pick count is `min(30, round(reps*0.65))` (floor 6), NOT a hard 12 — clamping a
+  40-photo dump to 12 reads as "the app ate my photos." The recipe retains the FULL `scored`
+  pool (metadata only, no pixels), so the Preview's **"Photos in this montage"** slider
+  (`PreviewScreen`) re-curates to any count from 3 up to the whole pool with no re-import —
+  committed on pointer-up (never per-tick, invariant #3). An explicit `targetCount` overrides
+  the 30 default cap up to the deduped pool size. Dedup/quality-floor still cull genuine
+  near-dupes/blurry shots (a feature): the slider `max` is the retained pool, so it's the
+  honest ceiling even when dedup trims the picks below it.
 
 ## Testing expectations
 
 Every bug fix lands with a regression test where the logic is pure (`src/lib`,
-`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 261 tests.
+`src/state`). UI-level fixes get covered by the smoke scripts. Current suite: 264 tests.
