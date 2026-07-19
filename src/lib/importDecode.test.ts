@@ -30,4 +30,16 @@ describe('importResizeWidth (bounded-memory decode target)', () => {
     const after = w * h;
     expect(before / after).toBeGreaterThan(20);
   });
+
+  it('uses the output-width (post-rotation) for EXIF orientation 5-8 (90°/270°)', () => {
+    // iPhone portrait: stored 4032×3024, orientation=6 → display is 3024×4032
+    // long=4032, displayW=rawH=3024 → resizeW=3024*(1600/4032)=1200
+    expect(importResizeWidth(4032, 3024, 1600, 6)).toBe(1200);
+    expect(importResizeWidth(4032, 3024, 1600, 5)).toBe(1200);
+    expect(importResizeWidth(4032, 3024, 1600, 7)).toBe(1200);
+    expect(importResizeWidth(4032, 3024, 1600, 8)).toBe(1200);
+    // no rotation: landscape photo is unchanged
+    expect(importResizeWidth(8000, 6000, 1600, 1)).toBe(1600);
+    expect(importResizeWidth(8000, 6000, 1600, 4)).toBe(1600);
+  });
 });

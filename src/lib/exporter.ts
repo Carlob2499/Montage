@@ -8,7 +8,7 @@ import JSZip from 'jszip';
 import { db } from '../db/db';
 import { normalizeStack } from './editStack';
 import type { ProjectDoc } from '../types';
-import { decodeImage } from './imageUtils';
+import { decodeImage, decodeImageBounded } from './imageUtils';
 import { gridUploadOrder } from './slicer';
 import { renderGridTile, renderPanel, renderRegion } from './renderer';
 import type { RenderResources } from './renderer';
@@ -61,25 +61,6 @@ function neededDecodeScale(
   return Math.min(1, scale * 1.25);
 }
 
-async function decodeScaled(
-  blob: Blob,
-  targetW: number,
-  srcW: number,
-  orientation?: number,
-): Promise<ImageBitmap> {
-  if (targetW >= srcW || targetW <= 0) return decodeImage(blob, orientation);
-  try {
-    return await createImageBitmap(blob, {
-      imageOrientation: 'from-image',
-      resizeWidth: Math.round(targetW),
-      resizeQuality: 'high',
-    });
-  } catch {
-    // resize options unsupported — fall back to a full decode
-    return decodeImage(blob, orientation);
-  }
-}
-
 /**
  * Load bitmaps + edit stacks for every photo a doc uses. Pass
  * `useProxies` for fast screen-resolution rendering (swipe preview);
@@ -119,7 +100,7 @@ export async function loadResources(
       let bitmap: ImageBitmap;
       if (!useProxies && record && record.kind === 'image') {
         const scale = neededDecodeScale(doc, id, record.width, record.height, stack);
-        bitmap = await decodeScaled(row.blob, record.width * scale, record.width, record.orientation);
+        bitmap = await decodeImageBounded(row.blob, scale < 1 ? Math.round(record.width * scale) : null, record.orientation);
       } else {
         bitmap = await decodeImage(row.blob);
       }

@@ -55,7 +55,7 @@ await page.evaluate(
     }
     const dt = new DataTransfer();
     for (const f of files) dt.items.add(f);
-    const input = document.querySelector('input[type="file"][accept*="image"]');
+    const input = document.querySelector('input[type="file"][accept="image/*,video/*"]');
     input.files = dt.files;
     input.dispatchEvent(new Event('change', { bubbles: true }));
   },

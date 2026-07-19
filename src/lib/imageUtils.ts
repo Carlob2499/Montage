@@ -109,19 +109,25 @@ export async function decodeImage(blob: Blob, exifOrientation?: number): Promise
 
 /**
  * The `resizeWidth` to pass createImageBitmap for a bounded-memory import
- * decode: shrink so the long edge is `maxEdge`, or null when the source is
- * already small enough / its dimensions are unknown (caller full-decodes).
- * Pure — `rawW`/`rawH` are the source's stored pixel dims (pre-orientation).
+ * decode. `createImageBitmap` with `imageOrientation:'from-image'` applies
+ * the EXIF rotation BEFORE the resize, so `resizeWidth` is the OUTPUT width
+ * (post-rotation). For 90°/270° rotations (EXIF 5-8) the raw dims are
+ * swapped: displayW = rawH. Passing the wrong width here produces a bitmap
+ * that is ~78% larger than the proxy budget for a typical portrait iPhone photo.
  */
 export function importResizeWidth(
   rawW: number | undefined,
   rawH: number | undefined,
   maxEdge: number,
+  exifOrientation?: number,
 ): number | null {
   if (!rawW || !rawH || rawW <= 0 || rawH <= 0) return null;
   const long = Math.max(rawW, rawH);
   if (long <= maxEdge) return null;
-  return Math.max(1, Math.round(rawW * (maxEdge / long)));
+  // orientations 5-8 rotate 90°/270°: the output width is the raw height
+  const displayW =
+    exifOrientation && exifOrientation >= 5 && exifOrientation <= 8 ? rawH : rawW;
+  return Math.max(1, Math.round(displayW * (maxEdge / long)));
 }
 
 /**
@@ -136,15 +142,17 @@ export async function decodeImageBounded(
   resizeWidth: number | null,
   exifOrientation?: number,
 ): Promise<ImageBitmap> {
-  if (resizeWidth && resizeWidth > 0) {
+  if (resizeWidth != null) {
     try {
       return await createImageBitmap(blob, {
         imageOrientation: 'from-image',
         resizeWidth,
         resizeQuality: 'high',
       });
-    } catch {
-      /* resize options unsupported (older Safari) — fall back to a full decode */
+    } catch (e) {
+      // re-throw real errors (OOM, corrupted blob); only swallow "options not
+      // supported" which arrives as DOMException or TypeError in older engines
+      if (!(e instanceof DOMException) && !(e instanceof TypeError)) throw e;
     }
   }
   return decodeImage(blob, exifOrientation);

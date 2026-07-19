@@ -42,14 +42,12 @@ export async function mapPool<T, R>(
   return results;
 }
 
-/** in-flight decode/encode jobs; bounded decode makes this cheap, but HEIC
- *  conversions are heavy so we stay conservative. Devices report memory when
- *  they can — halve the pool on low-memory phones. */
-function importConcurrency(): number {
+/** Stable for the page lifetime — deviceMemory is a read-once browser property. */
+const IMPORT_CONCURRENCY = (() => {
+  if (typeof navigator === 'undefined') return 4;
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-  if (typeof mem === 'number' && mem > 0 && mem <= 4) return 2;
-  return 4;
-}
+  return typeof mem === 'number' && mem > 0 && mem <= 4 ? 2 : 4;
+})();
 
 export interface ImportResult {
   imported: PhotoRecord[];
@@ -242,12 +240,12 @@ export async function importFiles(
         storedBlob = await normalizeImageBlob(file);
         // decode DOWNSCALED to the proxy size — never allocate the full-res
         // bitmap just to shrink it (the OOM/jank cause on big-album imports)
-        const resizeW = importResizeWidth(exif.imageWidth, exif.imageHeight, PROXY_SIZE);
+        const resizeW = importResizeWidth(exif.imageWidth, exif.imageHeight, PROXY_SIZE, exif.orientation);
         const bitmap = await decodeImageBounded(storedBlob, resizeW, exif.orientation);
         const decodedW = bitmap.width;
         const decodedH = bitmap.height;
         // PNG/WebP may carry transparency — JPEG proxies would turn it black
-        const hasAlpha = /png|webp/i.test(storedBlob.type || file.type);
+        const hasAlpha = /png|webp|avif/i.test(storedBlob.type || file.type);
         const [thumb, proxy] = await Promise.all([
           makeScaledImage(bitmap, THUMB_SIZE, 0.8, hasAlpha),
           makeScaledImage(bitmap, PROXY_SIZE, 0.87, hasAlpha),
@@ -305,7 +303,7 @@ export async function importFiles(
     onProgress?.(++done, files.length);
   };
 
-  await mapPool(files, importConcurrency(), processOne);
+  await mapPool(files, IMPORT_CONCURRENCY, processOne);
   // preserve the picker's order even though workers finish out of order
   imported.sort((a, b) => a.order - b.order);
 

@@ -20,6 +20,15 @@ import PhotoEditSheet from '../editor/PhotoEditSheet';
 import TripMap from './TripMap';
 import Icon from '../shared/Icon';
 
+// feature-detect webkitdirectory once at module load — present on Android Chrome
+// and all desktops, absent on iOS Safari. Runs once, not on every render.
+const canPickFolder = (() => {
+  if (typeof window === 'undefined') return false;
+  const el = document.createElement('input');
+  el.type = 'file';
+  return 'webkitdirectory' in el;
+})();
+
 export default function LibraryScreen() {
   const go = useUIStore((s) => s.go);
   const toast = useUIStore((s) => s.toast);
@@ -50,15 +59,6 @@ export default function LibraryScreen() {
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const cloudRef = useRef<HTMLInputElement>(null);
-  // feature-detect webkitdirectory — present on Android Chrome and all desktops,
-  // absent on iOS Safari (which has no directory picker API at all). The old
-  // pointer:fine check incorrectly excluded Android touch devices that DO support it.
-  const canPickFolder = (() => {
-    if (typeof window === 'undefined') return false;
-    const el = document.createElement('input');
-    el.type = 'file';
-    return 'webkitdirectory' in el;
-  })();
 
   const albums = useLiveQuery(() => db.albums.orderBy('createdAt').toArray(), []);
   // most recent imports across all albums — shown while picking for the canvas
@@ -458,7 +458,7 @@ export default function LibraryScreen() {
             JPEG · PNG · WebP · HEIC · short MP4/WebM
           </div>
         )}
-        {album && shown.length === 0 && !busy && (
+        {album && (photos?.length ?? 0) === 0 && !busy && (
           <div className="mt-8 text-center text-sm text-ink-400 px-6 space-y-2">
             <p>No photos here yet.</p>
             <p className="text-xs text-ink-500">
@@ -476,6 +476,17 @@ export default function LibraryScreen() {
                 long-press to enter select mode → <em>Select All</em>.
               </p>
             )}
+          </div>
+        )}
+        {album && (photos?.length ?? 0) > 0 && shown.length === 0 && !busy && (
+          <div className="mt-8 text-center text-sm text-ink-400">
+            <p>No photos match the active filters.</p>
+            <button
+              className="mt-2 text-xs underline"
+              onClick={() => { setFilterFav(false); setFilterLocated(false); setFilterMonth(''); setQuery(''); }}
+            >
+              Clear filters
+            </button>
           </div>
         )}
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6">
@@ -576,19 +587,17 @@ export default function LibraryScreen() {
               }}
             />
             {/* Cloud / Files picker — no accept so iOS opens Files app (all providers)
-                and Android opens the document picker (Drive, OneDrive, etc.) */}
+                and Android opens the document picker (Drive, OneDrive, etc.).
+                Pass all files to onFiles; importFiles reports per-file errors. */}
             <input
               ref={cloudRef}
               type="file"
               multiple
               className="hidden"
               onChange={(e) => {
-                const all = Array.from(e.target.files ?? []);
+                const files = Array.from(e.target.files ?? []);
                 e.target.value = '';
-                const media = all.filter(isSupportedFile);
-                if (media.length) void onFiles(media);
-                else if (all.length)
-                  toast('No supported photos or videos in the selected files', 'error');
+                if (files.length) void onFiles(files);
               }}
             />
             {canPickFolder && (
